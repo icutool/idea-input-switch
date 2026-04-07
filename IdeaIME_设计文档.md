@@ -2,6 +2,7 @@
 
 > 需求说明 · 技术设计 · 开发文档  
 > v1.0 | 语言: Rust | 平台: Windows
+cargo build --release
 
 ---
 
