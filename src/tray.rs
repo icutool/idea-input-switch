@@ -62,12 +62,13 @@ pub fn remove_icon(hwnd: HWND) {
     }
 }
 
+#[allow(dead_code)]
 pub fn show_balloon(hwnd: HWND, title: &str, message: &str) -> Result<()> {
     let mut data = base_icon_data(hwnd);
     data.uFlags = NIF_INFO;
     fill_utf16(&mut data.szInfoTitle, title);
     fill_utf16(&mut data.szInfo, message);
-    data.dwInfoFlags = if message.contains("中文") {
+    data.dwInfoFlags = if message.contains("Chinese") {
         NIIF_WARNING
     } else {
         NIIF_INFO
@@ -101,29 +102,29 @@ pub fn show_context_menu(hwnd: HWND) -> Result<()> {
     };
 
     let state_label = format!(
-        "当前状态：{}{}",
-        if paused { "暂停" } else { "运行" },
+        "State: {}{}",
+        if paused { "Paused" } else { "Running" },
         match mode {
-            ImeMode::Chinese => " / 中文",
-            ImeMode::English => " / 英文",
-            ImeMode::Unknown => " / 未知",
+            ImeMode::Chinese => " / Chinese",
+            ImeMode::English => " / English",
+            ImeMode::Unknown => " / Unknown",
         }
     );
     let pause_label = if paused {
-        "恢复监听"
+        "Resume listener"
     } else {
-        "暂停监听"
+        "Pause listener"
     };
     let autostart_label = if autostart_enabled {
-        "关闭开机自启"
+        "Disable auto-start"
     } else {
-        "开启开机自启"
+        "Enable auto-start"
     };
 
     let state_text = wide_null(&state_label);
     let pause_text = wide_null(pause_label);
     let autostart_text = wide_null(autostart_label);
-    let quit_text = wide_null("退出");
+    let quit_text = wide_null("Quit");
 
     let menu = unsafe { CreatePopupMenu() }?;
 
@@ -189,12 +190,12 @@ fn base_icon_data(hwnd: HWND) -> NOTIFYICONDATAW {
 
 fn tooltip(mode: ImeMode, paused: bool) -> String {
     if paused {
-        "IdeaIME: 已暂停".to_string()
+        "IdeaIME: paused".to_string()
     } else {
         match mode {
-            ImeMode::Chinese => "IdeaIME: 中文输入".to_string(),
-            ImeMode::English => "IdeaIME: 英文输入".to_string(),
-            ImeMode::Unknown => "IdeaIME: 状态未知".to_string(),
+            ImeMode::Chinese => "IdeaIME: Chinese input".to_string(),
+            ImeMode::English => "IdeaIME: English input".to_string(),
+            ImeMode::Unknown => "IdeaIME: state unknown".to_string(),
         }
     }
 }

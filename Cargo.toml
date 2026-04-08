@@ -1,4 +1,4 @@
-[package]
+﻿[package]
 name = "idea-ime"
 version = "0.1.0"
 edition = "2021"
@@ -18,7 +18,9 @@ windows = { version = "0.58", features = [
     "Win32_UI_WindowsAndMessaging",
 ] }
 winreg = "0.52"
- 
+
+[build-dependencies]
+winres = "0.1"
 
 [profile.release]
 opt-level = 3
