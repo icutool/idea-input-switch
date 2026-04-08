@@ -6,7 +6,7 @@ fn main() {
         let icon_path = std::path::Path::new("resources/app.ico");
         if icon_path.exists() {
             let mut resources = winres::WindowsResource::new();
-            resources.set_icon(icon_path.to_string_lossy().as_ref());
+            resources.set_icon_with_id(icon_path.to_string_lossy().as_ref(), "1");
             resources
                 .compile()
                 .expect("failed to compile Windows resources");
