@@ -35,9 +35,9 @@ struct PopupState {
 
 pub fn show_mode_switch(hwnd: HWND, mode: ImeMode) -> Result<()> {
     let message = match mode {
-        ImeMode::Chinese => "已切换中文输入",
-        ImeMode::English => "已切换英文输入",
-        ImeMode::Unknown => "输入状态未知",
+        ImeMode::Chinese => "\u{5df2}\u{5207}\u{6362}\u{5230}\u{4e2d}\u{6587}\u{8f93}\u{5165}",
+        ImeMode::English => "\u{5df2}\u{5207}\u{6362}\u{5230}\u{82f1}\u{6587}\u{8f93}\u{5165}",
+        ImeMode::Unknown => "\u{8f93}\u{5165}\u{6cd5}\u{72b6}\u{6001}\u{672a}\u{77e5}",
     };
 
     show_popup(hwnd, message)
@@ -45,9 +45,9 @@ pub fn show_mode_switch(hwnd: HWND, mode: ImeMode) -> Result<()> {
 
 pub fn show_pause_status(hwnd: HWND, paused: bool) -> Result<()> {
     let message = if paused {
-        "IDEA input listener paused"
+        "\u{5df2}\u{6682}\u{505c} IDEA \u{8f93}\u{5165}\u{6cd5}\u{76d1}\u{542c}"
     } else {
-        "IDEA input listener resumed"
+        "\u{5df2}\u{6062}\u{590d} IDEA \u{8f93}\u{5165}\u{6cd5}\u{76d1}\u{542c}"
     };
 
     show_popup(hwnd, message)
@@ -55,9 +55,9 @@ pub fn show_pause_status(hwnd: HWND, paused: bool) -> Result<()> {
 
 pub fn show_autostart_status(hwnd: HWND, enabled: bool) -> Result<()> {
     let message = if enabled {
-        "Auto-start enabled"
+        "\u{5df2}\u{5f00}\u{542f}\u{5f00}\u{673a}\u{81ea}\u{542f}"
     } else {
-        "Auto-start disabled"
+        "\u{5df2}\u{5173}\u{95ed}\u{5f00}\u{673a}\u{81ea}\u{542f}"
     };
 
     show_popup(hwnd, message)
@@ -65,14 +65,24 @@ pub fn show_autostart_status(hwnd: HWND, enabled: bool) -> Result<()> {
 
 pub fn show_status(hwnd: HWND, mode: ImeMode, paused: bool, autostart_enabled: bool) -> Result<()> {
     let mode_label = match mode {
-        ImeMode::Chinese => "Chinese",
-        ImeMode::English => "English",
-        ImeMode::Unknown => "Unknown",
+        ImeMode::Chinese => "\u{4e2d}\u{6587}",
+        ImeMode::English => "\u{82f1}\u{6587}",
+        ImeMode::Unknown => "\u{672a}\u{77e5}",
     };
-    let pause_label = if paused { "Paused" } else { "Listening" };
-    let autostart_label = if autostart_enabled { "On" } else { "Off" };
+    let pause_label = if paused {
+        "\u{5df2}\u{6682}\u{505c}"
+    } else {
+        "\u{76d1}\u{542c}\u{4e2d}"
+    };
+    let autostart_label = if autostart_enabled {
+        "\u{5f00}"
+    } else {
+        "\u{5173}"
+    };
 
-    let message = format!("{pause_label} | Input: {mode_label} | Auto-start: {autostart_label}");
+    let message = format!(
+        "{pause_label} | \u{5f53}\u{524d}\u{8f93}\u{5165}\u{6cd5}\u{ff1a}{mode_label} | \u{5f00}\u{673a}\u{81ea}\u{542f}\u{ff1a}{autostart_label}"
+    );
     show_popup(hwnd, &message)
 }
 

@@ -2,7 +2,8 @@ use std::{iter, os::windows::ffi::OsStrExt};
 
 use anyhow::{anyhow, Result};
 use windows::core::PCWSTR;
-use windows::Win32::Foundation::{GetLastError, HWND, LPARAM, POINT};
+use windows::Win32::Foundation::{GetLastError, HINSTANCE, HWND, LPARAM, POINT};
+use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Shell::{
     Shell_NotifyIconW, NIF_ICON, NIF_INFO, NIF_MESSAGE, NIF_TIP, NIIF_INFO, NIIF_WARNING, NIM_ADD,
     NIM_DELETE, NIM_MODIFY, NOTIFYICONDATAW,
@@ -68,7 +69,7 @@ pub fn show_balloon(hwnd: HWND, title: &str, message: &str) -> Result<()> {
     data.uFlags = NIF_INFO;
     fill_utf16(&mut data.szInfoTitle, title);
     fill_utf16(&mut data.szInfo, message);
-    data.dwInfoFlags = if message.contains("Chinese") {
+    data.dwInfoFlags = if message.contains("中文") {
         NIIF_WARNING
     } else {
         NIIF_INFO
@@ -103,7 +104,11 @@ pub fn show_context_menu(hwnd: HWND) -> Result<()> {
 
     let state_label = format!(
         "状态: {}{}",
-        if paused { "已暂停" } else { "运行中" },
+        if paused {
+            "已暂停"
+        } else {
+            "运行中"
+        },
         match mode {
             ImeMode::Chinese => " / 中文",
             ImeMode::English => " / 英文",
@@ -124,7 +129,7 @@ pub fn show_context_menu(hwnd: HWND) -> Result<()> {
     let state_text = wide_null(&state_label);
     let pause_text = wide_null(pause_label);
     let autostart_text = wide_null(autostart_label);
-    let quit_text = wide_null("Quit");
+    let quit_text = wide_null("退出");
 
     let menu = unsafe { CreatePopupMenu() }?;
 
@@ -190,7 +195,7 @@ fn base_icon_data(hwnd: HWND) -> NOTIFYICONDATAW {
 
 fn tooltip(mode: ImeMode, paused: bool) -> String {
     if paused {
-        "IdeaIME: paused".to_string()
+        "IdeaIME: 已暂停".to_string()
     } else {
         match mode {
             ImeMode::Chinese => "IdeaIME: 中文输入".to_string(),
@@ -201,6 +206,10 @@ fn tooltip(mode: ImeMode, paused: bool) -> String {
 }
 
 fn load_status_icon(mode: ImeMode, paused: bool) -> HICON {
+    if let Some(icon) = load_embedded_app_icon() {
+        return icon;
+    }
+
     unsafe {
         if paused {
             return LoadIconW(None, IDI_ERROR).unwrap_or_default();
@@ -211,6 +220,13 @@ fn load_status_icon(mode: ImeMode, paused: bool) -> HICON {
             ImeMode::English => LoadIconW(None, IDI_INFORMATION).unwrap_or_default(),
             ImeMode::Unknown => LoadIconW(None, IDI_APPLICATION).unwrap_or_default(),
         }
+    }
+}
+
+fn load_embedded_app_icon() -> Option<HICON> {
+    unsafe {
+        let module = GetModuleHandleW(None).ok()?;
+        LoadIconW(HINSTANCE(module.0), PCWSTR(1 as *const u16)).ok()
     }
 }
 
