@@ -102,8 +102,8 @@ pub fn show_context_menu(hwnd: HWND) -> Result<()> {
     };
 
     let state_label = format!(
-        "状态: {}",
-        if paused { "已暂停} else { "运行中
+        "状态: {}{}",
+        if paused { "已暂停" } else { "运行中" },
         match mode {
             ImeMode::Chinese => " / 中文",
             ImeMode::English => " / 英文",
