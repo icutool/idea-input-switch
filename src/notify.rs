@@ -35,9 +35,9 @@ struct PopupState {
 
 pub fn show_mode_switch(hwnd: HWND, mode: ImeMode) -> Result<()> {
     let message = match mode {
-        ImeMode::Chinese => "Switched to Chinese input",
-        ImeMode::English => "Switched to English input",
-        ImeMode::Unknown => "Input method state is unknown",
+        ImeMode::Chinese => "已切换中文输入",
+        ImeMode::English => "已切换英文输入",
+        ImeMode::Unknown => "输入状态未知",
     };
 
     show_popup(hwnd, message)

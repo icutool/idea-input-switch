@@ -111,14 +111,14 @@ pub fn show_context_menu(hwnd: HWND) -> Result<()> {
         }
     );
     let pause_label = if paused {
-        "Resume listener"
+        "恢复监听"
     } else {
-        "Pause listener"
+        "暂停监听"
     };
     let autostart_label = if autostart_enabled {
-        "Disable auto-start"
+        "关闭开机自启"
     } else {
-        "Enable auto-start"
+        "开启开机自启"
     };
 
     let state_text = wide_null(&state_label);
