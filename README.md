@@ -65,12 +65,12 @@ cargo build --release
 生成文件位置：
 
 ```text
-target/release/idea-input-switch.exe
+target/release/IdeaInputSwitch.exe
 ```
 
 ## 使用方式
 
-1. 启动 `idea-input-switch.exe`
+1. 启动 `IdeaInputSwitch.exe`
 2. 程序进入系统托盘
 3. 打开 IntelliJ IDEA
 4. 输入 `//` 时自动切中文
@@ -91,7 +91,7 @@ target/release/idea-input-switch.exe
 cargo build --release
 ```
 
-重新编译后，生成的 `idea-input-switch.exe` 会带上新的图标。
+重新编译后，生成的 `IdeaInputSwitch.exe` 会带上新的图标。
 
 ### 图标要求建议
 

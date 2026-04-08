@@ -237,7 +237,7 @@ fn send_toast(message: &str) -> anyhow::Result<()> {
 ## 6. 项目目录结构
 
 ```
-idea-input-switch/
+IdeaInputSwitch/
 ├── Cargo.toml
 ├── build.rs                  # 嵌入 Windows 资源（图标、版本信息）
 ├── resources/
