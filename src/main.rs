@@ -16,17 +16,20 @@ use anyhow::{anyhow, Context, Result};
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 use windows::core::{w, PCWSTR};
-use windows::Win32::Foundation::{GetLastError, HWND, LPARAM, LRESULT, WPARAM};
+use windows::Win32::Foundation::{GetLastError, HANDLE, HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::System::Threading::{CreateMutexW, ReleaseMutex};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetMessageW, PostQuitMessage,
     RegisterClassW, TranslateMessage, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, MSG, WINDOW_EX_STYLE,
     WM_APP, WM_COMMAND, WM_DESTROY, WNDCLASSW, WS_OVERLAPPEDWINDOW,
 };
+use windows::Win32::Foundation::ERROR_ALREADY_EXISTS;
 
 const WINDOW_CLASS: PCWSTR = w!("IdeaInputSwitchHiddenWindow");
 const WINDOW_TITLE: PCWSTR = w!("IdeaInputSwitch");
 const WM_APP_PROCESS_EVENTS: u32 = WM_APP + 1;
+const MUTEX_NAME: PCWSTR = w!("Global\\IdeaInputSwitchSingleInstance");
 
 static APP_CONTEXT: OnceLock<Mutex<AppContext>> = OnceLock::new();
 
@@ -40,6 +43,16 @@ struct AppContext {
 
 fn main() -> Result<()> {
     init_logging();
+
+    // ── 单例检测 ───────────────────────────────────────────
+    let _mutex_guard = match try_acquire_single_instance() {
+        SingleInstanceResult::AlreadyRunning(handle) => {
+            // 已有实例运行，弹出提示后退出
+            show_already_running_notification(handle);
+            return Ok(());
+        }
+        SingleInstanceResult::FirstInstance(handle) => handle,
+    };
 
     let (sender, receiver) = channel();
     let autostart_enabled = autostart::is_enabled().unwrap_or(false);
@@ -62,6 +75,9 @@ fn main() -> Result<()> {
 
     tray::add_icon(hwnd, ime::ImeMode::English, false).context("failed to add tray icon")?;
 
+    // 启动成功，显示已启动提示
+    let _ = notify::show_started(hwnd);
+
     let hook_thread = hook::start(sender, hwnd, WM_APP_PROCESS_EVENTS)
         .context("failed to start keyboard hook thread")?;
 
@@ -71,6 +87,70 @@ fn main() -> Result<()> {
     hook_thread.stop();
     tray::remove_icon(hwnd);
     Ok(())
+}
+
+// ── 单例检测 ───────────────────────────────────────────────────────────────
+
+enum SingleInstanceResult {
+    FirstInstance(HANDLE),
+    AlreadyRunning(HANDLE),
+}
+
+fn try_acquire_single_instance() -> SingleInstanceResult {
+    unsafe {
+        let handle = CreateMutexW(None, true, MUTEX_NAME)
+            .unwrap_or(HANDLE::default());
+
+        let last_err = GetLastError();
+        if last_err == ERROR_ALREADY_EXISTS {
+            SingleInstanceResult::AlreadyRunning(handle)
+        } else {
+            SingleInstanceResult::FirstInstance(handle)
+        }
+    }
+}
+
+/// 已有实例运行时：创建临时窗口显示弹窗，等待其消失后退出
+fn show_already_running_notification(mutex_handle: HANDLE) {
+    if let Ok(hwnd) = create_message_window() {
+        let (_, receiver) = std::sync::mpsc::channel();
+        let _ = APP_CONTEXT.set(Mutex::new(AppContext {
+            receiver,
+            paused: false,
+            autostart_enabled: false,
+            current_mode: ime::ImeMode::English,
+            hwnd_raw: hwnd.0 as isize,
+        }));
+
+        let _ = notify::show_already_running(hwnd);
+
+        let start = std::time::Instant::now();
+        let mut msg = MSG::default();
+        loop {
+            if start.elapsed().as_millis() > 2800 {
+                break;
+            }
+            unsafe {
+                let has = windows::Win32::UI::WindowsAndMessaging::PeekMessageW(
+                    &mut msg,
+                    None,
+                    0,
+                    0,
+                    windows::Win32::UI::WindowsAndMessaging::PM_REMOVE,
+                );
+                if has.as_bool() {
+                    let _ = TranslateMessage(&msg);
+                    DispatchMessageW(&msg);
+                } else {
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+            }
+        }
+    }
+
+    if !mutex_handle.is_invalid() {
+        unsafe { let _ = ReleaseMutex(mutex_handle); }
+    }
 }
 
 fn init_logging() {
