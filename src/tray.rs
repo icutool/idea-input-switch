@@ -195,12 +195,12 @@ fn base_icon_data(hwnd: HWND) -> NOTIFYICONDATAW {
 
 fn tooltip(mode: ImeMode, paused: bool) -> String {
     if paused {
-        "IdeaIME: 已暂停".to_string()
+        "IdeaInputSwitch: 已暂停".to_string()
     } else {
         match mode {
-            ImeMode::Chinese => "IdeaIME: 中文输入".to_string(),
-            ImeMode::English => "IdeaIME: 英文输入".to_string(),
-            ImeMode::Unknown => "IdeaIME: 状态未知".to_string(),
+            ImeMode::Chinese => "IdeaInputSwitch: 中文输入".to_string(),
+            ImeMode::English => "IdeaInputSwitch: 英文输入".to_string(),
+            ImeMode::Unknown => "IdeaInputSwitch: 状态未知".to_string(),
         }
     }
 }

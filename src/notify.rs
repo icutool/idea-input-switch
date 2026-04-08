@@ -15,9 +15,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 use crate::{ime::ImeMode, tray};
 
-const POPUP_CLASS: PCWSTR = w!("IdeaImePopupWindow");
+const POPUP_CLASS: PCWSTR = w!("IdeaInputSwitchPopupWindow");
 const STATIC_CLASS: PCWSTR = w!("STATIC");
-const POPUP_TITLE: PCWSTR = w!("IdeaIME");
+const POPUP_TITLE: PCWSTR = w!("IdeaInputSwitch");
 const POPUP_TIMER_ID: usize = 1;
 const POPUP_DURATION_MS: u32 = 1000;
 const POPUP_WIDTH: i32 = 320;

@@ -24,8 +24,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WM_APP, WM_COMMAND, WM_DESTROY, WNDCLASSW, WS_OVERLAPPEDWINDOW,
 };
 
-const WINDOW_CLASS: PCWSTR = w!("IdeaImeHiddenWindow");
-const WINDOW_TITLE: PCWSTR = w!("IdeaIME");
+const WINDOW_CLASS: PCWSTR = w!("IdeaInputSwitchHiddenWindow");
+const WINDOW_TITLE: PCWSTR = w!("IdeaInputSwitch");
 const WM_APP_PROCESS_EVENTS: u32 = WM_APP + 1;
 
 static APP_CONTEXT: OnceLock<Mutex<AppContext>> = OnceLock::new();
@@ -65,7 +65,7 @@ fn main() -> Result<()> {
     let hook_thread = hook::start(sender, hwnd, WM_APP_PROCESS_EVENTS)
         .context("failed to start keyboard hook thread")?;
 
-    info!("IdeaIME started");
+    info!("IdeaInputSwitch started");
     run_message_loop()?;
 
     hook_thread.stop();

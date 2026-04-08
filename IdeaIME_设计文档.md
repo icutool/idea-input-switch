@@ -1,4 +1,4 @@
-# IdeaIME — IntelliJ IDEA 智能输入法切换工具
+# IdeaInputSwitch — IntelliJ IDEA 智能输入法切换工具
 
 > 需求说明 · 技术设计 · 开发文档  
 > v1.0 | 语言: Rust | 平台: Windows
@@ -10,7 +10,7 @@ cargo build --release
 
 开发者在 IntelliJ IDEA 中编码时，常需切换输入法写中文注释，写完注释按回车后忘记切回英文输入法，导致输入的代码字符全部变成乱码，只能全部删除重来。这一痛点每天都在反复发生，严重打断编码节奏。
 
-**IdeaIME** 是一款运行于 Windows 系统托盘的轻量 Rust 程序，专门解决上述问题。核心目标：
+**IdeaInputSwitch** 是一款运行于 Windows 系统托盘的轻量 Rust 程序，专门解决上述问题。核心目标：
 
 - 检测用户正在使用 IntelliJ IDEA
 - 监听特定键序（`//`）自动切换中文输入法，方便写注释
@@ -41,7 +41,7 @@ cargo build --release
 ### 2.3 系统通知
 
 - 输入法切换成功后，弹出 Windows Toast 通知（右下角）
-- 通知显示：图标 + 标题（IdeaIME）+ 正文（已切换到中文 / 已切换到英文）
+- 通知显示：图标 + 标题（IdeaInputSwitch）+ 正文（已切换到中文 / 已切换到英文）
 - 通知自动消失，3 秒后淡出，不需要用户操作
 - 同一方向的切换不重复通知（已经是英文时按 Enter 不弹通知）
 
@@ -217,11 +217,11 @@ fn send_toast(message: &str) -> anyhow::Result<()> {
     let xml = XmlDocument::new()?;
     xml.LoadXml(&format!(
         "<toast><visual><binding template='ToastGeneric'>\
-         <text>IdeaIME</text><text>{}</text>\
+         <text>IdeaInputSwitch</text><text>{}</text>\
          </binding></visual></toast>", message
     ))?;
     let notifier = ToastNotificationManager::CreateToastNotifierWithId(
-        &"IdeaIME".into()
+        &"IdeaInputSwitch".into()
     )?;
     notifier.Show(&ToastNotification::CreateToastNotification(&xml)?)?;
     Ok(())
@@ -279,7 +279,7 @@ IdeaInputSwitch/
 
 - 先用已有的 Go 代码验证 IME 切换逻辑是否对当前搜狗版本生效，再迁移到 Rust
 - 键盘 Hook 调试期间，建议在虚拟机或备用机上开发，避免 Hook 卡死导致主机输入失灵
-- 使用 `tracing` + 文件日志（写入 `%APPDATA%\IdeaIME\`），便于在托盘模式（无控制台）下排查问题
+- 使用 `tracing` + 文件日志（写入 `%APPDATA%\IdeaInputSwitch\`），便于在托盘模式（无控制台）下排查问题
 - `Cargo.toml` 加入以下配置最小化二进制体积：
 
 ```toml

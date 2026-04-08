@@ -1,6 +1,6 @@
-﻿# IdeaIME
+﻿# IdeaInputSwitch
 
-IdeaIME 是一个面向 Windows 11 x64 的 IntelliJ IDEA 输入法自动切换工具。
+IdeaInputSwitch 是一个面向 Windows 11 x64 的 IntelliJ IDEA 输入法自动切换工具。
 
 它在后台常驻托盘，监听 IDEA 中的 `//` 与 `Enter`：
 - 在 IDEA 中连续输入 `//` 时，自动切到中文输入法
