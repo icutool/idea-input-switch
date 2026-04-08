@@ -102,12 +102,12 @@ pub fn show_context_menu(hwnd: HWND) -> Result<()> {
     };
 
     let state_label = format!(
-        "State: {}{}",
-        if paused { "Paused" } else { "Running" },
+        "状态: {}",
+        if paused { "已暂停} else { "运行中
         match mode {
-            ImeMode::Chinese => " / Chinese",
-            ImeMode::English => " / English",
-            ImeMode::Unknown => " / Unknown",
+            ImeMode::Chinese => " / 中文",
+            ImeMode::English => " / 英文",
+            ImeMode::Unknown => " / 未知",
         }
     );
     let pause_label = if paused {
@@ -193,9 +193,9 @@ fn tooltip(mode: ImeMode, paused: bool) -> String {
         "IdeaIME: paused".to_string()
     } else {
         match mode {
-            ImeMode::Chinese => "IdeaIME: Chinese input".to_string(),
-            ImeMode::English => "IdeaIME: English input".to_string(),
-            ImeMode::Unknown => "IdeaIME: state unknown".to_string(),
+            ImeMode::Chinese => "IdeaIME: 中文输入".to_string(),
+            ImeMode::English => "IdeaIME: 英文输入".to_string(),
+            ImeMode::Unknown => "IdeaIME: 状态未知".to_string(),
         }
     }
 }
