@@ -11,6 +11,7 @@ use std::sync::{
     mpsc::{channel, Receiver, TryRecvError},
     Mutex, OnceLock,
 };
+use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Context, Result};
 use tracing::{info, warn};
@@ -30,6 +31,7 @@ const WINDOW_CLASS: PCWSTR = w!("IdeaInputSwitchHiddenWindow");
 const WINDOW_TITLE: PCWSTR = w!("IdeaInputSwitch");
 const WM_APP_PROCESS_EVENTS: u32 = WM_APP + 1;
 const MUTEX_NAME: PCWSTR = w!("Global\\IdeaInputSwitchSingleInstance");
+const ENTER_LISTEN_WINDOW: Duration = Duration::from_secs(30);
 
 static APP_CONTEXT: OnceLock<Mutex<AppContext>> = OnceLock::new();
 
@@ -38,6 +40,7 @@ struct AppContext {
     paused: bool,
     autostart_enabled: bool,
     current_mode: ime::ImeMode,
+    enter_listener_until: Option<Instant>,
     hwnd_raw: isize,
 }
 
@@ -63,6 +66,7 @@ fn main() -> Result<()> {
             paused: false,
             autostart_enabled,
             current_mode: ime::ImeMode::English,
+            enter_listener_until: None,
             hwnd_raw: 0,
         }))
         .map_err(|_| anyhow!("application context already initialized"))?;
@@ -119,6 +123,7 @@ fn show_already_running_notification(mutex_handle: HANDLE) {
             paused: false,
             autostart_enabled: false,
             current_mode: ime::ImeMode::English,
+            enter_listener_until: None,
             hwnd_raw: hwnd.0 as isize,
         }));
 
@@ -329,6 +334,10 @@ fn process_hook_event(event: hook::HookEvent) -> Result<()> {
         return Ok(());
     }
 
+    if matches!(event, hook::HookEvent::EnterPressed) && !is_enter_listener_active() {
+        return Ok(());
+    }
+
     let hwnd = match watcher::foreground_window() {
         Some(hwnd) => hwnd,
         None => return Ok(()),
@@ -340,7 +349,10 @@ fn process_hook_event(event: hook::HookEvent) -> Result<()> {
 
     let desired_mode = match event {
         hook::HookEvent::SlashSequence => ime::ImeMode::Chinese,
-        hook::HookEvent::EnterPressed => ime::ImeMode::English,
+        hook::HookEvent::EnterPressed => {
+            clear_enter_listener();
+            ime::ImeMode::English
+        }
     };
 
     let current_mode = ime::current_mode(hwnd)?;
@@ -350,6 +362,10 @@ fn process_hook_event(event: hook::HookEvent) -> Result<()> {
     }
 
     if current_mode == desired_mode {
+        if matches!(event, hook::HookEvent::SlashSequence) {
+            arm_enter_listener();
+        }
+
         let (paused, tray_hwnd) = {
             let context = context_lock();
             (context.paused, hwnd_from_raw(context.hwnd_raw))
@@ -368,9 +384,35 @@ fn process_hook_event(event: hook::HookEvent) -> Result<()> {
 
         tray::update_icon(tray_hwnd, confirmed, false)?;
         if confirmed == desired_mode {
+            if matches!(event, hook::HookEvent::SlashSequence) {
+                arm_enter_listener();
+            }
             notify::show_mode_switch(tray_hwnd, desired_mode)?;
         }
     }
 
     Ok(())
+}
+
+fn is_enter_listener_active() -> bool {
+    let now = Instant::now();
+    let mut context = context_lock();
+    match context.enter_listener_until {
+        Some(until) if now <= until => true,
+        Some(_) => {
+            context.enter_listener_until = None;
+            false
+        }
+        None => false,
+    }
+}
+
+fn arm_enter_listener() {
+    let mut context = context_lock();
+    context.enter_listener_until = Some(Instant::now() + ENTER_LISTEN_WINDOW);
+}
+
+fn clear_enter_listener() {
+    let mut context = context_lock();
+    context.enter_listener_until = None;
 }
