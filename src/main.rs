@@ -349,6 +349,10 @@ fn process_hook_event(event: hook::HookEvent) -> Result<()> {
 
     let desired_mode = match event {
         hook::HookEvent::SlashSequence => ime::ImeMode::Chinese,
+        hook::HookEvent::DocCommentEnter => {
+            clear_enter_listener();
+            ime::ImeMode::Chinese
+        }
         hook::HookEvent::EnterPressed => {
             clear_enter_listener();
             ime::ImeMode::English
