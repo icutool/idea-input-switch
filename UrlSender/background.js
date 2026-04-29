@@ -1,45 +1,77 @@
 import { getModeForUrl, getSettings } from "./config.js";
 
-const lastProcessedUrlByTab = new Map();
+const lastProcessedEventByTab = new Map();
 
 chrome.runtime.onInstalled.addListener(async () => {
   await chrome.action.setBadgeBackgroundColor({ color: "#2563eb" });
 });
 
 chrome.webNavigation.onCommitted.addListener((details) => {
-  void handleNavigation(details);
+  void handleNavigation({
+    frameId: details.frameId,
+    tabId: details.tabId,
+    trigger: "navigation",
+    url: details.url,
+    eventKey: `committed:${details.documentId ?? details.timeStamp ?? details.url}`
+  });
 });
 
 chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
-  void handleNavigation(details);
+  void handleNavigation({
+    frameId: details.frameId,
+    tabId: details.tabId,
+    trigger: "history",
+    url: details.url,
+    eventKey: `history:${details.documentId ?? details.timeStamp ?? details.url}`
+  });
+});
+
+chrome.tabs.onActivated.addListener((activeInfo) => {
+  void handleTabActivated(activeInfo.tabId);
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
-  lastProcessedUrlByTab.delete(tabId);
+  lastProcessedEventByTab.delete(tabId);
 });
 
-async function handleNavigation(details) {
-  if (details.frameId !== 0 || !details.url || !isHttpUrl(details.url)) {
+async function handleTabActivated(tabId) {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+
+    await handleNavigation({
+      frameId: 0,
+      tabId,
+      trigger: "activation",
+      url: tab.url,
+      eventKey: `activated:${Date.now()}`
+    });
+  } catch (error) {
+    console.debug(`[UrlSender] Failed to inspect activated tab ${tabId}.`, error);
+  }
+}
+
+async function handleNavigation(event) {
+  if (event.frameId !== 0 || !event.url || !isHttpUrl(event.url)) {
     return;
   }
 
-  const previousUrl = lastProcessedUrlByTab.get(details.tabId);
-  if (previousUrl === details.url) {
+  const previousEventKey = lastProcessedEventByTab.get(event.tabId);
+  if (previousEventKey === event.eventKey) {
     return;
   }
 
-  lastProcessedUrlByTab.set(details.tabId, details.url);
+  lastProcessedEventByTab.set(event.tabId, event.eventKey);
 
   const settings = await getSettings();
-  const decision = getModeForUrl(details.url, settings);
+  const decision = getModeForUrl(event.url, settings);
 
   if (decision.invalidRules.length > 0) {
     console.warn("[UrlSender] Some regex rules are invalid and were skipped.", decision.invalidRules);
   }
 
   if (decision.mode === null) {
-    console.log(`[UrlSender] No rule matched for ${details.url}`);
-    await clearBadge(details.tabId);
+    console.log(`[UrlSender] No rule matched for ${event.url} (${event.trigger})`);
+    await clearBadge(event.tabId);
     return;
   }
 
@@ -55,12 +87,12 @@ async function handleNavigation(details) {
     }
 
     console.log(
-      `[UrlSender] Matched ${decision.label} for ${details.url} with rule "${decision.pattern}", called ${requestUrl}`
+      `[UrlSender] Matched ${decision.label} for ${event.url} via ${event.trigger} with rule "${decision.pattern}", called ${requestUrl}`
     );
-    await flashBadge(details.tabId, decision.label, "#16a34a");
+    await flashBadge(event.tabId, decision.label, "#16a34a");
   } catch (error) {
-    console.error(`[UrlSender] Failed to switch mode for ${details.url}`, error);
-    await flashBadge(details.tabId, "ERR", "#dc2626");
+    console.error(`[UrlSender] Failed to switch mode for ${event.url} (${event.trigger})`, error);
+    await flashBadge(event.tabId, "ERR", "#dc2626");
   }
 }
 
