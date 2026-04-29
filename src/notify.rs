@@ -136,6 +136,45 @@ pub fn show_system_balloon(hwnd: HWND, title: &str, message: &str) -> Result<()>
     tray::show_balloon(hwnd, title, message)
 }
 
+pub fn show_http_switch_result(hwnd: HWND, mode: ImeMode, changed: bool) -> Result<()> {
+    match (mode, changed) {
+        (ImeMode::Chinese, true) => show_popup(
+            hwnd,
+            "已切换到中文输入",
+            "HTTP 请求 · 输入法切换成功",
+            COLOR_BORDER_LEFT_CN,
+        ),
+        (ImeMode::English, true) => show_popup(
+            hwnd,
+            "已切换到英文输入",
+            "HTTP 请求 · 输入法切换成功",
+            COLOR_BORDER_LEFT_EN,
+        ),
+        (ImeMode::Chinese, false) => show_popup(
+            hwnd,
+            "当前已是中文输入",
+            "HTTP 请求 · 无需重复切换",
+            COLOR_BORDER_LEFT_CN,
+        ),
+        (ImeMode::English, false) => show_popup(
+            hwnd,
+            "当前已是英文输入",
+            "HTTP 请求 · 无需重复切换",
+            COLOR_BORDER_LEFT_EN,
+        ),
+        (ImeMode::Unknown, _) => show_popup(
+            hwnd,
+            "输入法状态未知",
+            "HTTP 请求 · 无法确认当前输入法状态",
+            COLOR_BORDER_LEFT_DEF,
+        ),
+    }
+}
+
+pub fn show_http_switch_error(hwnd: HWND, message: &str) -> Result<()> {
+    show_popup(hwnd, "HTTP 切换失败", message, COLOR_BORDER_LEFT_DEF)
+}
+
 fn show_popup(owner: HWND, main: &str, sub: &str, accent: u32) -> Result<()> {
     // 先更新文字内容到状态，再触发重绘
     {

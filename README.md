@@ -6,18 +6,20 @@ IdeaInputSwitch 是一个面向 Windows 11 x64 的 IntelliJ IDEA 输入法自动
 - 在 IDEA 中连续输入 `/**enter` 时，自动切到中文输入法
 - 在 IDEA 中连续输入 `//` 时，自动切到中文输入法
 - 在 IDEA 中按下 `Enter` 时，自动切回英文输入法
+- 同时提供 `5998` 端口的 HTTP 接口，可手动切换当前前台窗口的输入法
 - 不吞键，按键依然正常传递给 IDEA
 - 默认使用应用内自定义通知条，显示约 1 秒后自动消失
 - 保留系统气泡通知逻辑作为备用实现，但默认不启用
 
 ## 项目架构
 
-程序由 6 个核心模块组成：
+程序由 7 个核心模块组成：
 
 ```text
 src/
 ├── main.rs        # 程序入口，隐藏消息窗口、消息循环、状态路由
 ├── hook.rs        # 低级键盘 Hook，识别 // 与 Enter
+├── http_server.rs # HTTP 服务，接收外部输入法切换请求
 ├── ime.rs         # IME 查询与切换
 ├── watcher.rs     # 前台窗口与 IDEA 进程判断
 ├── notify.rs      # 自定义通知条 + 备用系统通知接口
@@ -36,6 +38,13 @@ src/
   -> ime.rs 执行切换
   -> tray.rs 更新托盘状态
   -> notify.rs 显示 1 秒自定义通知条
+
+HTTP 请求
+  -> http_server.rs 接收
+  -> main.rs 收到请求
+  -> ime.rs 直接切换当前前台窗口输入法
+  -> tray.rs 更新托盘状态
+  -> notify.rs 显示切换结果
 ```
 
 ### 模块职责
@@ -44,6 +53,8 @@ src/
   负责初始化隐藏窗口、托盘、全局状态、消息循环，以及把 Hook 事件路由到 IME 切换逻辑。
 - `hook.rs`
   使用 `WH_KEYBOARD_LL` 监听全局按键。`//` 连击窗口为 300ms，Enter 单独触发英文切换。
+- `http_server.rs`
+  监听 `5998` 端口，把 HTTP 请求转成主线程中的输入法切换任务。
 - `ime.rs`
   使用 `WM_IME_CONTROL` 和 `ImmSetOpenStatus` 查询/设置输入法开关状态。
 - `watcher.rs`
@@ -76,6 +87,19 @@ target/release/IdeaInputSwitch.exe
 3. 打开 IntelliJ IDEA
 4. 输入 `//` 时自动切中文
 5. 按 `Enter` 时自动切英文
+
+## HTTP 接口
+
+程序启动后会监听 `5998` 端口，调用接口后会直接对当前前台窗口切换输入法，不再限制为 IDEA：
+
+```powershell
+curl "http://127.0.0.1:5998/switch?mode=1"
+curl "http://127.0.0.1:5998/switch?mode=0"
+```
+
+- `mode=1`：切换中文输入
+- `mode=0`：切换英文输入
+- 也兼容 `http://127.0.0.1:5998/1` 和 `http://127.0.0.1:5998/0`
 
 ## 修改 exe 图标
 

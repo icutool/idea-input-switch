@@ -2,6 +2,7 @@
 
 mod autostart;
 mod hook;
+mod http_server;
 mod ime;
 mod notify;
 mod tray;
@@ -30,6 +31,7 @@ use windows::Win32::Foundation::ERROR_ALREADY_EXISTS;
 const WINDOW_CLASS: PCWSTR = w!("IdeaInputSwitchHiddenWindow");
 const WINDOW_TITLE: PCWSTR = w!("IdeaInputSwitch");
 const WM_APP_PROCESS_EVENTS: u32 = WM_APP + 1;
+const WM_APP_PROCESS_HTTP_REQUESTS: u32 = WM_APP + 2;
 const MUTEX_NAME: PCWSTR = w!("Global\\IdeaInputSwitchSingleInstance");
 const ENTER_LISTEN_WINDOW: Duration = Duration::from_secs(30);
 
@@ -37,6 +39,7 @@ static APP_CONTEXT: OnceLock<Mutex<AppContext>> = OnceLock::new();
 
 struct AppContext {
     receiver: Receiver<hook::HookEvent>,
+    http_receiver: Receiver<http_server::SwitchRequest>,
     paused: bool,
     autostart_enabled: bool,
     current_mode: ime::ImeMode,
@@ -58,11 +61,13 @@ fn main() -> Result<()> {
     };
 
     let (sender, receiver) = channel();
+    let (http_sender, http_receiver) = channel();
     let autostart_enabled = autostart::is_enabled().unwrap_or(false);
 
     APP_CONTEXT
         .set(Mutex::new(AppContext {
             receiver,
+            http_receiver,
             paused: false,
             autostart_enabled,
             current_mode: ime::ImeMode::English,
@@ -82,12 +87,15 @@ fn main() -> Result<()> {
     // 启动成功，显示已启动提示
     let _ = notify::show_started(hwnd);
 
+    let http_server = http_server::start(http_sender, hwnd, WM_APP_PROCESS_HTTP_REQUESTS)
+        .context("failed to start HTTP server")?;
     let hook_thread = hook::start(sender, hwnd, WM_APP_PROCESS_EVENTS)
         .context("failed to start keyboard hook thread")?;
 
     info!("IdeaInputSwitch started");
     run_message_loop()?;
 
+    http_server.stop();
     hook_thread.stop();
     tray::remove_icon(hwnd);
     Ok(())
@@ -118,8 +126,10 @@ fn try_acquire_single_instance() -> SingleInstanceResult {
 fn show_already_running_notification(mutex_handle: HANDLE) {
     if let Ok(hwnd) = create_message_window() {
         let (_, receiver) = std::sync::mpsc::channel();
+        let (_, http_receiver) = std::sync::mpsc::channel();
         let _ = APP_CONTEXT.set(Mutex::new(AppContext {
             receiver,
+            http_receiver,
             paused: false,
             autostart_enabled: false,
             current_mode: ime::ImeMode::English,
@@ -258,6 +268,12 @@ unsafe extern "system" fn window_proc(
             }
             LRESULT(0)
         }
+        WM_APP_PROCESS_HTTP_REQUESTS => {
+            if let Err(error) = drain_http_requests() {
+                warn!(?error, "failed to process HTTP switch request");
+            }
+            LRESULT(0)
+        }
         _ => DefWindowProcW(hwnd, message, wparam, lparam),
     }
 }
@@ -321,6 +337,25 @@ fn drain_hook_events() -> Result<()> {
 
         match event {
             Some(event) => process_hook_event(event)?,
+            None => break,
+        }
+    }
+
+    Ok(())
+}
+
+fn drain_http_requests() -> Result<()> {
+    loop {
+        let request = {
+            let context = context_lock();
+            match context.http_receiver.try_recv() {
+                Ok(request) => Some(request),
+                Err(TryRecvError::Empty | TryRecvError::Disconnected) => None,
+            }
+        };
+
+        match request {
+            Some(request) => process_http_switch_request(request),
             None => break,
         }
     }
@@ -396,6 +431,75 @@ fn process_hook_event(event: hook::HookEvent) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn process_http_switch_request(request: http_server::SwitchRequest) {
+    let response = match switch_foreground_mode_from_http(request.desired_mode) {
+        Ok(response) => response,
+        Err(error) => http_server::SwitchResponse::error(format!("输入法切换失败: {error}")),
+    };
+    request.respond(response);
+}
+
+fn switch_foreground_mode_from_http(
+    desired_mode: ime::ImeMode,
+) -> Result<http_server::SwitchResponse> {
+    let tray_hwnd = { hwnd_from_raw(context_lock().hwnd_raw) };
+    let hwnd = match watcher::foreground_window() {
+        Some(hwnd) => hwnd,
+        None => {
+            let _ = notify::show_http_switch_error(tray_hwnd, "未找到可切换的前台窗口");
+            return Ok(http_server::SwitchResponse::error("未找到可切换的前台窗口"));
+        }
+    };
+
+    let current_mode = ime::current_mode(hwnd)?;
+    let paused = {
+        let mut context = context_lock();
+        context.current_mode = current_mode;
+        context.paused
+    };
+
+    if current_mode == desired_mode {
+        let _ = tray::update_icon(tray_hwnd, current_mode, paused);
+        let _ = notify::show_http_switch_result(tray_hwnd, desired_mode, false);
+        let message = match desired_mode {
+            ime::ImeMode::Chinese => "当前已经是中文输入",
+            ime::ImeMode::English => "当前已经是英文输入",
+            ime::ImeMode::Unknown => "当前输入法状态未知",
+        };
+        return Ok(http_server::SwitchResponse::success(
+            desired_mode,
+            false,
+            message,
+        ));
+    }
+
+    let _ = ime::set_mode(hwnd, desired_mode)?;
+    let confirmed_mode = ime::current_mode(hwnd)?;
+    {
+        let mut context = context_lock();
+        context.current_mode = confirmed_mode;
+    }
+
+    let _ = tray::update_icon(tray_hwnd, confirmed_mode, paused);
+
+    if confirmed_mode == desired_mode {
+        let _ = notify::show_http_switch_result(tray_hwnd, desired_mode, true);
+        let message = match desired_mode {
+            ime::ImeMode::Chinese => "已切换到中文输入",
+            ime::ImeMode::English => "已切换到英文输入",
+            ime::ImeMode::Unknown => "输入法状态未知",
+        };
+        Ok(http_server::SwitchResponse::success(
+            desired_mode,
+            true,
+            message,
+        ))
+    } else {
+        let _ = notify::show_http_switch_error(tray_hwnd, "输入法切换未生效");
+        Ok(http_server::SwitchResponse::error("输入法切换未生效"))
+    }
 }
 
 fn is_enter_listener_active() -> bool {
