@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Url Sender Input Switcher",
+  "version": "1.0.0",
+  "description": "Match visited URLs and call a backend to switch input mode.",
+  "permissions": [
+    "storage",
+    "tabs",
+    "webNavigation"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Url Sender",
+    "default_popup": "popup.html"
+  }
+}

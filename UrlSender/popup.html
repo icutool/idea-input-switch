@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Url Sender</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main class="panel">
+      <h1>Url Sender</h1>
+      <p class="intro">访问新地址时，按下面的正则规则自动切换中英文输入模式。</p>
+
+      <form id="settings-form">
+        <label class="field">
+          <span>后台地址</span>
+          <input
+            id="baseUrl"
+            name="baseUrl"
+            type="url"
+            placeholder="http://127.0.0.1:5998"
+            spellcheck="false"
+          >
+        </label>
+
+        <label class="field">
+          <span>中文输入法网址正则</span>
+          <textarea
+            id="chinesePatterns"
+            name="chinesePatterns"
+            rows="6"
+            placeholder="一行一个，例如：^https://mail\\.qq\\.com/"
+            spellcheck="false"
+          ></textarea>
+        </label>
+
+        <label class="field">
+          <span>英文输入法网址正则</span>
+          <textarea
+            id="englishPatterns"
+            name="englishPatterns"
+            rows="6"
+            placeholder="一行一个，例如：^https://github\\.com/"
+            spellcheck="false"
+          ></textarea>
+        </label>
+
+        <div class="tips">
+          <p>规则按整条 URL 匹配。</p>
+          <p>中文规则优先于英文规则。</p>
+          <p>命中后插件图标会短暂显示 CN / EN / ERR。</p>
+        </div>
+
+        <button class="save-button" type="submit">保存配置</button>
+        <p id="status" class="status" aria-live="polite"></p>
+      </form>
+    </main>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>
