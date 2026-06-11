@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod autostart;
+mod config;
 mod hook;
 mod http_server;
 mod ime;
@@ -43,6 +44,7 @@ struct AppContext {
     paused: bool,
     autostart_enabled: bool,
     current_mode: ime::ImeMode,
+    input_method: ime::InputMethod,
     enter_listener_until: Option<Instant>,
     hwnd_raw: isize,
 }
@@ -63,6 +65,7 @@ fn main() -> Result<()> {
     let (sender, receiver) = channel();
     let (http_sender, http_receiver) = channel();
     let autostart_enabled = autostart::is_enabled().unwrap_or(false);
+    let input_method = config::load_input_method();
 
     APP_CONTEXT
         .set(Mutex::new(AppContext {
@@ -71,6 +74,7 @@ fn main() -> Result<()> {
             paused: false,
             autostart_enabled,
             current_mode: ime::ImeMode::English,
+            input_method,
             enter_listener_until: None,
             hwnd_raw: 0,
         }))
@@ -133,6 +137,7 @@ fn show_already_running_notification(mutex_handle: HANDLE) {
             paused: false,
             autostart_enabled: false,
             current_mode: ime::ImeMode::English,
+            input_method: ime::InputMethod::default(),
             enter_listener_until: None,
             hwnd_raw: hwnd.0 as isize,
         }));
@@ -283,6 +288,8 @@ fn handle_menu_command(hwnd: HWND, command_id: usize) {
         tray::ID_STATUS => show_current_status(hwnd),
         tray::ID_TOGGLE_PAUSE => toggle_pause(hwnd),
         tray::ID_TOGGLE_AUTOSTART => toggle_autostart(hwnd),
+        tray::ID_SELECT_SOGOU => select_input_method(hwnd, ime::InputMethod::Sogou),
+        tray::ID_SELECT_MICROSOFT => select_input_method(hwnd, ime::InputMethod::Microsoft),
         tray::ID_QUIT => unsafe { DestroyWindow(hwnd).context("failed to destroy hidden window") },
         _ => Ok(()),
     };
@@ -299,6 +306,7 @@ fn show_current_status(hwnd: HWND) -> Result<()> {
         context.current_mode,
         context.paused,
         context.autostart_enabled,
+        context.input_method,
     )
 }
 
@@ -323,6 +331,28 @@ fn toggle_autostart(hwnd: HWND) -> Result<()> {
     };
 
     notify::show_autostart_status(hwnd, enabled)
+}
+
+fn select_input_method(hwnd: HWND, input_method: ime::InputMethod) -> Result<()> {
+    let (changed, current_mode, paused) = {
+        let mut context = context_lock();
+        let changed = context.input_method != input_method;
+        if changed {
+            config::save_input_method(input_method)?;
+            context.input_method = input_method;
+            context.current_mode = ime::ImeMode::Unknown;
+        }
+
+        (changed, context.current_mode, context.paused)
+    };
+
+    tray::update_icon(hwnd, current_mode, paused)?;
+
+    if changed {
+        notify::show_input_method_status(hwnd, input_method)
+    } else {
+        show_current_status(hwnd)
+    }
 }
 
 fn drain_hook_events() -> Result<()> {
@@ -364,7 +394,10 @@ fn drain_http_requests() -> Result<()> {
 }
 
 fn process_hook_event(event: hook::HookEvent) -> Result<()> {
-    let paused = { context_lock().paused };
+    let (paused, input_method) = {
+        let context = context_lock();
+        (context.paused, context.input_method)
+    };
     if paused {
         return Ok(());
     }
@@ -394,7 +427,7 @@ fn process_hook_event(event: hook::HookEvent) -> Result<()> {
         }
     };
 
-    let current_mode = ime::current_mode(hwnd)?;
+    let current_mode = ime::current_mode(hwnd, input_method)?;
     {
         let mut context = context_lock();
         context.current_mode = current_mode;
@@ -413,8 +446,8 @@ fn process_hook_event(event: hook::HookEvent) -> Result<()> {
         return Ok(());
     }
 
-    if ime::set_mode(hwnd, desired_mode)? {
-        let confirmed = ime::current_mode(hwnd)?;
+    if ime::set_mode(hwnd, desired_mode, input_method)? {
+        let confirmed = ime::current_mode(hwnd, input_method)?;
         let tray_hwnd = {
             let mut context = context_lock();
             context.current_mode = confirmed;
@@ -444,7 +477,10 @@ fn process_http_switch_request(request: http_server::SwitchRequest) {
 fn switch_foreground_mode_from_http(
     desired_mode: ime::ImeMode,
 ) -> Result<http_server::SwitchResponse> {
-    let tray_hwnd = { hwnd_from_raw(context_lock().hwnd_raw) };
+    let (tray_hwnd, input_method) = {
+        let context = context_lock();
+        (hwnd_from_raw(context.hwnd_raw), context.input_method)
+    };
     let hwnd = match watcher::foreground_window() {
         Some(hwnd) => hwnd,
         None => {
@@ -453,7 +489,7 @@ fn switch_foreground_mode_from_http(
         }
     };
 
-    let current_mode = ime::current_mode(hwnd)?;
+    let current_mode = ime::current_mode(hwnd, input_method)?;
     let paused = {
         let mut context = context_lock();
         context.current_mode = current_mode;
@@ -475,8 +511,8 @@ fn switch_foreground_mode_from_http(
         ));
     }
 
-    let _ = ime::set_mode(hwnd, desired_mode)?;
-    let confirmed_mode = ime::current_mode(hwnd)?;
+    let _ = ime::set_mode(hwnd, desired_mode, input_method)?;
+    let confirmed_mode = ime::current_mode(hwnd, input_method)?;
     {
         let mut context = context_lock();
         context.current_mode = confirmed_mode;

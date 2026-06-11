@@ -10,12 +10,12 @@ use windows::Win32::UI::Shell::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreatePopupMenu, DestroyMenu, GetCursorPos, LoadIconW, SetForegroundWindow,
-    TrackPopupMenu, HICON, IDI_APPLICATION, IDI_ERROR, IDI_INFORMATION, IDI_WARNING, MF_DISABLED,
-    MF_GRAYED, MF_SEPARATOR, MF_STRING, TPM_BOTTOMALIGN, TPM_LEFTALIGN, WM_APP, WM_CONTEXTMENU,
-    WM_LBUTTONUP, WM_RBUTTONUP,
+    TrackPopupMenu, HICON, IDI_APPLICATION, IDI_ERROR, IDI_INFORMATION, IDI_WARNING, MF_CHECKED,
+    MF_DISABLED, MF_GRAYED, MF_POPUP, MF_SEPARATOR, MF_STRING, MF_UNCHECKED, TPM_BOTTOMALIGN,
+    TPM_LEFTALIGN, WM_APP, WM_CONTEXTMENU, WM_LBUTTONUP, WM_RBUTTONUP,
 };
 
-use crate::ime::ImeMode;
+use crate::ime::{ImeMode, InputMethod};
 
 pub const WM_TRAYICON: u32 = WM_APP + 10;
 pub const TRAY_UID: u32 = 1;
@@ -24,6 +24,8 @@ pub const ID_STATUS: usize = 1001;
 pub const ID_TOGGLE_PAUSE: usize = 1002;
 pub const ID_TOGGLE_AUTOSTART: usize = 1003;
 pub const ID_QUIT: usize = 1004;
+pub const ID_SELECT_SOGOU: usize = 1005;
+pub const ID_SELECT_MICROSOFT: usize = 1006;
 
 pub fn add_icon(hwnd: HWND, mode: ImeMode, paused: bool) -> Result<()> {
     let mut data = base_icon_data(hwnd);
@@ -89,8 +91,14 @@ pub fn handle_callback(hwnd: HWND, lparam: LPARAM) {
             let _ = show_context_menu(hwnd);
         }
         WM_LBUTTONUP => {
-            if let Some((mode, paused, autostart_enabled)) = current_state() {
-                let _ = crate::notify::show_status(hwnd, mode, paused, autostart_enabled);
+            if let Some((mode, paused, autostart_enabled, input_method)) = current_state() {
+                let _ = crate::notify::show_status(
+                    hwnd,
+                    mode,
+                    paused,
+                    autostart_enabled,
+                    input_method,
+                );
             }
         }
         _ => {}
@@ -98,22 +106,23 @@ pub fn handle_callback(hwnd: HWND, lparam: LPARAM) {
 }
 
 pub fn show_context_menu(hwnd: HWND) -> Result<()> {
-    let Some((mode, paused, autostart_enabled)) = current_state() else {
+    let Some((mode, paused, autostart_enabled, input_method)) = current_state() else {
         return Err(anyhow!("application context unavailable"));
     };
 
     let state_label = format!(
-        "状态: {}{}",
+        "状态: {} / {} / {}",
         if paused {
             "已暂停"
         } else {
             "运行中"
         },
         match mode {
-            ImeMode::Chinese => " / 中文",
-            ImeMode::English => " / 英文",
-            ImeMode::Unknown => " / 未知",
-        }
+            ImeMode::Chinese => "中文",
+            ImeMode::English => "英文",
+            ImeMode::Unknown => "未知",
+        },
+        input_method.label()
     );
     let pause_label = if paused {
         "恢复监听"
@@ -129,9 +138,25 @@ pub fn show_context_menu(hwnd: HWND) -> Result<()> {
     let state_text = wide_null(&state_label);
     let pause_text = wide_null(pause_label);
     let autostart_text = wide_null(autostart_label);
+    let input_method_text = wide_null("输入法设置");
+    let sogou_text = wide_null("搜狗输入法");
+    let microsoft_text = wide_null("微软拼音");
     let quit_text = wide_null("退出");
 
     let menu = unsafe { CreatePopupMenu() }?;
+    let input_method_menu = unsafe { CreatePopupMenu() }?;
+    let sogou_flags = MF_STRING
+        | if input_method == InputMethod::Sogou {
+            MF_CHECKED
+        } else {
+            MF_UNCHECKED
+        };
+    let microsoft_flags = MF_STRING
+        | if input_method == InputMethod::Microsoft {
+            MF_CHECKED
+        } else {
+            MF_UNCHECKED
+        };
 
     unsafe {
         let _ = AppendMenuW(
@@ -140,7 +165,25 @@ pub fn show_context_menu(hwnd: HWND) -> Result<()> {
             ID_STATUS,
             PCWSTR(state_text.as_ptr()),
         );
+        let _ = AppendMenuW(
+            input_method_menu,
+            sogou_flags,
+            ID_SELECT_SOGOU,
+            PCWSTR(sogou_text.as_ptr()),
+        );
+        let _ = AppendMenuW(
+            input_method_menu,
+            microsoft_flags,
+            ID_SELECT_MICROSOFT,
+            PCWSTR(microsoft_text.as_ptr()),
+        );
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
+        let _ = AppendMenuW(
+            menu,
+            MF_STRING | MF_POPUP,
+            input_method_menu.0 as usize,
+            PCWSTR(input_method_text.as_ptr()),
+        );
         let _ = AppendMenuW(
             menu,
             MF_STRING,
@@ -175,13 +218,14 @@ pub fn show_context_menu(hwnd: HWND) -> Result<()> {
     Ok(())
 }
 
-fn current_state() -> Option<(ImeMode, bool, bool)> {
+fn current_state() -> Option<(ImeMode, bool, bool, InputMethod)> {
     let context = crate::APP_CONTEXT.get()?;
     let context = context.lock().ok()?;
     Some((
         context.current_mode,
         context.paused,
         context.autostart_enabled,
+        context.input_method,
     ))
 }
 

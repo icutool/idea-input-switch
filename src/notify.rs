@@ -20,7 +20,10 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
 };
 
-use crate::{ime::ImeMode, tray};
+use crate::{
+    ime::{ImeMode, InputMethod},
+    tray,
+};
 
 const POPUP_CLASS: PCWSTR = w!("IdeaInputSwitchPopupWindow");
 const POPUP_TITLE: PCWSTR = w!("IdeaInputSwitch");
@@ -103,7 +106,13 @@ pub fn show_autostart_status(hwnd: HWND, enabled: bool) -> Result<()> {
     }
 }
 
-pub fn show_status(hwnd: HWND, mode: ImeMode, paused: bool, autostart_enabled: bool) -> Result<()> {
+pub fn show_status(
+    hwnd: HWND,
+    mode: ImeMode,
+    paused: bool,
+    autostart_enabled: bool,
+    input_method: InputMethod,
+) -> Result<()> {
     let mode_label = match mode {
         ImeMode::Chinese => "中文",
         ImeMode::English => "英文",
@@ -112,7 +121,10 @@ pub fn show_status(hwnd: HWND, mode: ImeMode, paused: bool, autostart_enabled: b
     let pause_label = if paused { "已暂停" } else { "监听中" };
     let autostart_label = if autostart_enabled { "开" } else { "关" };
 
-    let sub = format!("输入法：{mode_label}  ·  自启：{autostart_label}");
+    let sub = format!(
+        "{}：{mode_label}  ·  自启：{autostart_label}",
+        input_method.label()
+    );
     let accent = if paused {
         COLOR_BORDER_LEFT_DEF
     } else if mode == ImeMode::Chinese {
@@ -121,6 +133,15 @@ pub fn show_status(hwnd: HWND, mode: ImeMode, paused: bool, autostart_enabled: b
         COLOR_BORDER_LEFT_EN
     };
     show_popup(hwnd, pause_label, &sub, accent)
+}
+
+pub fn show_input_method_status(hwnd: HWND, input_method: InputMethod) -> Result<()> {
+    show_popup(
+        hwnd,
+        "已切换输入法设置",
+        input_method.label(),
+        COLOR_BORDER_LEFT_DEF,
+    )
 }
 
 pub fn show_already_running(hwnd: HWND) -> Result<()> {
