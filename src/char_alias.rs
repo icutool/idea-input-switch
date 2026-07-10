@@ -8,10 +8,11 @@ use windows::Win32::Foundation::{
     COLORREF, GetLastError, HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM,
 };
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, CLIP_DEFAULT_PRECIS, CreateFontW, CreatePen, CreateSolidBrush, DEFAULT_CHARSET,
-    DEFAULT_PITCH, DEFAULT_QUALITY, DeleteObject, DrawTextW, EndPaint, FF_DONTCARE, FillRect,
-    HBRUSH, HDC, HGDIOBJ, OUT_DEFAULT_PRECIS, PAINTSTRUCT, PS_SOLID, RoundRect, SelectObject,
-    SetBkMode, SetTextColor, TRANSPARENT, DT_CENTER, DT_LEFT, DT_SINGLELINE, DT_VCENTER,
+    BeginPaint, CLIP_DEFAULT_PRECIS, COLOR_WINDOW, CreateFontW, CreatePen, CreateSolidBrush,
+    DEFAULT_CHARSET, DEFAULT_PITCH, DEFAULT_QUALITY, DeleteObject, DrawTextW, EndPaint,
+    FF_DONTCARE, FillRect, GetSysColorBrush, HBRUSH, HDC, HGDIOBJ, OUT_DEFAULT_PRECIS,
+    PAINTSTRUCT, PS_SOLID, RoundRect, SelectObject, SetBkMode, SetTextColor, TRANSPARENT,
+    DT_CENTER, DT_LEFT, DT_SINGLELINE, DT_VCENTER,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Controls::{DRAWITEMSTRUCT, ODS_DISABLED, ODS_SELECTED};
@@ -252,12 +253,7 @@ unsafe extern "system" fn window_proc(
                 let _ = SetBkMode(hdc, TRANSPARENT);
                 let _ = SetTextColor(hdc, COLORREF(COLOR_TEXT));
             }
-            let brush = WINDOW_STATE
-                .lock()
-                .ok()
-                .and_then(|state| state.as_ref().map(|state| state.field_brush))
-                .unwrap_or_default();
-            LRESULT(brush.0 as isize)
+            LRESULT(unsafe { GetSysColorBrush(COLOR_WINDOW).0 as isize })
         }
         WM_CTLCOLORBTN | WM_CTLCOLORSTATIC => {
             unsafe {
@@ -265,12 +261,7 @@ unsafe extern "system" fn window_proc(
                 let _ = SetBkMode(hdc, TRANSPARENT);
                 let _ = SetTextColor(hdc, COLORREF(COLOR_MUTED));
             }
-            let brush = WINDOW_STATE
-                .lock()
-                .ok()
-                .and_then(|state| state.as_ref().map(|state| state.bg_brush))
-                .unwrap_or_default();
-            LRESULT(brush.0 as isize)
+            LRESULT(unsafe { GetSysColorBrush(COLOR_WINDOW).0 as isize })
         }
         WM_ALIAS_CAPTURED => {
             let binding = KeyBinding {
@@ -754,11 +745,20 @@ fn handle_command(hwnd: HWND, wparam: WPARAM, _lparam: LPARAM) {
 
     if command_id == ID_TRIGGER_EDIT && notification == EN_SETFOCUS as u16 {
         let _ = crate::hook::begin_alias_capture(hwnd, WM_ALIAS_CAPTURED);
-        if let Ok(mut state) = WINDOW_STATE.lock() {
+        let trigger_edit = {
+            let mut state = match WINDOW_STATE.lock() {
+                Ok(state) => state,
+                Err(_) => return,
+            };
             if let Some(state) = state.as_mut() {
                 state.pending_trigger = None;
-                set_window_text(state.trigger_edit, "");
+                Some(state.trigger_edit)
+            } else {
+                None
             }
+        };
+        if let Some(trigger_edit) = trigger_edit {
+            set_window_text(trigger_edit, "");
         }
         set_status("请按下要作为别名触发的键。");
         return;
