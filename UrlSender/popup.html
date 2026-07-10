@@ -28,7 +28,7 @@
           <div class="rule-builder">
             <select id="chineseRuleType" aria-label="中文规则匹配方式">
               <option value="keyword">关键词</option>
-              <option value="domain">域名</option>
+              <option value="exact">精准匹配</option>
               <option value="prefix">前缀</option>
               <option value="regex">正则</option>
             </select>
@@ -45,7 +45,7 @@
             name="chinesePatterns"
             rows="6"
             placeholder="关键词: docs
-域名: baidu.com
+精准匹配: https://www.baidu.com/
 前缀: https://baidu.com/query
 正则: ^https://mail\\.qq\\.com/"
             spellcheck="false"
@@ -57,7 +57,7 @@
           <div class="rule-builder">
             <select id="englishRuleType" aria-label="英文规则匹配方式">
               <option value="keyword">关键词</option>
-              <option value="domain">域名</option>
+              <option value="exact">精准匹配</option>
               <option value="prefix">前缀</option>
               <option value="regex">正则</option>
             </select>
@@ -74,7 +74,7 @@
             name="englishPatterns"
             rows="6"
             placeholder="关键词: github
-域名: github.com
+精准匹配: https://github.com/
 前缀: https://stackoverflow.com/questions
 正则: ^https://.*\\.example\\.com/"
             spellcheck="false"
@@ -82,9 +82,9 @@
         </label>
 
         <div class="tips">
-          <p>每行一种规则：关键词、域名、前缀、正则。</p>
-          <p>域名必须完全相同，子域名不会命中。</p>
-          <p>前缀会匹配相同协议、域名和路径下级，查询参数不影响命中。</p>
+          <p>每行一种规则：关键词、精准匹配、前缀、正则。</p>
+          <p>精准匹配会把当前 URL 和规则内容做 equals 比较，完全相同才命中。</p>
+          <p>前缀会匹配相同协议、主机名和路径下级，查询参数不影响命中。</p>
           <p>中文规则优先于英文规则。</p>
           <p>命中后插件图标会短暂显示 CN / EN / ERR。</p>
         </div>

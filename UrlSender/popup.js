@@ -17,13 +17,13 @@ const exportConfigButton = document.getElementById("exportConfig");
 const statusElement = document.getElementById("status");
 const ruleLabels = {
   keyword: "关键词",
-  domain: "域名",
+  exact: "精准匹配",
   prefix: "前缀",
   regex: "正则"
 };
 const rulePlaceholders = {
   keyword: "输入关键词",
-  domain: "输入精准域名",
+  exact: "输入完整 URL",
   prefix: "输入网址前缀",
   regex: "输入正则"
 };

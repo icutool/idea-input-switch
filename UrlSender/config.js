@@ -8,7 +8,7 @@ export const DEFAULT_SETTINGS = {
 
 export const RULE_CONFIG_VERSION = 1;
 
-const RULE_TYPES = new Set(["keyword", "domain", "prefix", "regex"]);
+const RULE_TYPES = new Set(["keyword", "exact", "prefix", "regex"]);
 
 export async function getSettings() {
   const stored = await chrome.storage.local.get(STORAGE_KEY);
@@ -36,14 +36,25 @@ export function normalizeBaseUrl(input) {
 }
 
 export function parseRuleLine(line) {
+  const deprecatedPrefixes = ["域名:", "域名精准:", "精准域名:", "domain:", "host:"];
   const prefixes = [
     ["keyword", ["关键词:", "关键字:", "包含:", "keyword:", "kw:"]],
-    ["domain", ["域名:", "域名精准:", "精准域名:", "domain:", "host:"]],
-    ["prefix", ["前缀:", "域名前缀:", "url前缀:", "prefix:", "url:"]],
+    ["exact", ["精准匹配:", "精确匹配:", "完全匹配:", "equals:", "exact:"]],
+    ["prefix", ["前缀:", "url前缀:", "prefix:", "url:"]],
     ["regex", ["正则:", "regex:", "regexp:", "re:"]]
   ];
 
   const lowerLine = line.toLowerCase();
+  const deprecatedLabel = deprecatedPrefixes.find((candidate) =>
+    lowerLine.startsWith(candidate.toLowerCase())
+  );
+  if (deprecatedLabel) {
+    return {
+      type: "deprecated",
+      value: line.slice(deprecatedLabel.length).trim()
+    };
+  }
+
   for (const [type, labels] of prefixes) {
     const label = labels.find((candidate) => lowerLine.startsWith(candidate.toLowerCase()));
     if (label) {
@@ -63,7 +74,7 @@ export function parseRuleLine(line) {
 export function formatRuleLine(rule) {
   const labels = {
     keyword: "关键词",
-    domain: "域名",
+    exact: "精准匹配",
     prefix: "前缀",
     regex: "正则"
   };
@@ -79,6 +90,10 @@ function normalizeRuleList(rules, fieldName) {
   return rules.map((rule, index) => {
     if (typeof rule === "string") {
       const parsed = parseRuleLine(rule.trim());
+      if (!RULE_TYPES.has(parsed.type)) {
+        throw new Error(`${fieldName} 第 ${index + 1} 条规则类型不支持: ${parsed.type}。`);
+      }
+
       return {
         type: parsed.type,
         value: parsed.value
@@ -233,22 +248,12 @@ function buildPrefixMatcher(value) {
   };
 }
 
-function buildDomainMatcher(value) {
+function buildExactMatcher(value) {
   if (!value) {
-    throw new Error("域名不能为空");
+    throw new Error("精准匹配不能为空");
   }
 
-  const hasExplicitProtocol = /^[a-z][a-z0-9+.-]*:\/\//iu.test(value);
-  const parsedRule = new URL(hasExplicitProtocol ? value : `https://${value}`);
-  const hostname = parsedRule.hostname.toLowerCase();
-
-  return (url) => {
-    try {
-      return new URL(url).hostname.toLowerCase() === hostname;
-    } catch (error) {
-      return false;
-    }
-  };
+  return (url) => url === value;
 }
 
 function buildRegexMatcher(value) {
@@ -272,11 +277,15 @@ function buildRuleMatcher(type, value) {
     return buildPrefixMatcher(value);
   }
 
-  if (type === "domain") {
-    return buildDomainMatcher(value);
+  if (type === "exact") {
+    return buildExactMatcher(value);
   }
 
-  return buildRegexMatcher(value);
+  if (type === "regex") {
+    return buildRegexMatcher(value);
+  }
+
+  throw new Error("规则类型不支持，请使用 关键词、精准匹配、前缀 或 正则");
 }
 
 export function compilePatternList(input) {

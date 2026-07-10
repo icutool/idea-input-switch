@@ -6,8 +6,8 @@
 
 - 点击插件图标后，可以配置后台地址。
 - 可以分别配置“中文输入法网址规则”和“英文输入法网址规则”。
-- 新增规则时可以在弹窗中选择“关键词 / 域名 / 前缀 / 正则”后添加。
-- 每行一条规则，支持关键词匹配、域名精准匹配、域名前缀匹配、正则匹配。
+- 新增规则时可以在弹窗中选择“关键词 / 精准匹配 / 前缀 / 正则”后添加。
+- 每行一条规则，支持关键词匹配、URL 精准匹配、URL 前缀匹配、正则匹配。
 - 支持从远程 JSON 地址导入规则、选择本地 JSON 文件导入规则、导出当前规则为 JSON 文件。
 - 当访问新的网页地址时：
   - 命中中文规则，调用 `baseUrl/switch?mode=1`
@@ -35,7 +35,7 @@ http://127.0.0.1:5998
 
 ```text
 关键词: docs
-域名: baidu.com
+精准匹配: https://www.baidu.com/
 前缀: https://baidu.com/query
 正则: ^https://mail\.qq\.com/
 ```
@@ -44,7 +44,7 @@ http://127.0.0.1:5998
 
 ```text
 关键词: github
-域名: github.com
+精准匹配: https://github.com/
 前缀: https://stackoverflow.com/questions
 正则: ^https://.*\.example\.com/
 ```
@@ -52,8 +52,8 @@ http://127.0.0.1:5998
 ## 规则写法
 
 - `关键词: github`：只要 URL 中包含 `github` 就命中，不区分大小写。
-- `域名: baidu.com`：只匹配域名完全等于 `baidu.com` 的网页。`www.baidu.com`、`tieba.baidu.com` 不会命中。
-- `前缀: https://baidu.com/query`：匹配相同协议、域名和路径前缀。比如 `https://baidu.com/query?123`、`https://baidu.com/query/1/2/3` 都会命中。
+- `精准匹配: https://www.baidu.com/`：把当前 URL 和规则内容做 equals 比较，完全相同才命中。
+- `前缀: https://baidu.com/query`：匹配相同协议、主机名和路径前缀。比如 `https://baidu.com/query?123`、`https://baidu.com/query/1/2/3` 都会命中。
 - `正则: ^https://mail\.qq\.com/`：按 JavaScript 正则匹配整条 URL。
 
 为了兼容旧配置，不写前缀的行仍然按正则处理。
@@ -75,7 +75,7 @@ JSON 格式如下：
   "rules": {
     "chinese": [
       {
-        "type": "domain",
+        "type": "exact",
         "value": "https://www.baidu.com/"
       }
     ],
