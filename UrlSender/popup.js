@@ -1,9 +1,19 @@
-import { getSettings, saveSettings, validateSettings } from "./config.js";
+import {
+  getSettings,
+  ruleConfigToSettings,
+  saveSettings,
+  settingsToRuleConfig,
+  validateSettings
+} from "./config.js";
 
 const form = document.getElementById("settings-form");
 const baseUrlInput = document.getElementById("baseUrl");
 const chinesePatternsInput = document.getElementById("chinesePatterns");
 const englishPatternsInput = document.getElementById("englishPatterns");
+const remoteConfigUrlInput = document.getElementById("remoteConfigUrl");
+const importRemoteConfigButton = document.getElementById("importRemoteConfig");
+const localConfigFileInput = document.getElementById("localConfigFile");
+const exportConfigButton = document.getElementById("exportConfig");
 const statusElement = document.getElementById("status");
 const ruleLabels = {
   keyword: "关键词",
@@ -71,8 +81,67 @@ form.addEventListener("submit", async (event) => {
   renderStatus("配置已保存。", "success");
 });
 
+importRemoteConfigButton.addEventListener("click", async () => {
+  const url = remoteConfigUrlInput.value.trim();
+  if (!url) {
+    renderStatus("远程 JSON 地址不能为空。", "error");
+    return;
+  }
+
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      cache: "no-store"
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const config = await response.json();
+    await importRuleConfig(config);
+    renderStatus("远程规则已导入并保存。", "success");
+  } catch (error) {
+    renderStatus(`远程导入失败: ${formatError(error)}`, "error");
+  }
+});
+
+localConfigFileInput.addEventListener("change", async () => {
+  const file = localConfigFileInput.files?.[0];
+  if (!file) {
+    return;
+  }
+
+  try {
+    const config = JSON.parse(await file.text());
+    await importRuleConfig(config);
+    renderStatus("本地规则已导入并保存。", "success");
+  } catch (error) {
+    renderStatus(`本地导入失败: ${formatError(error)}`, "error");
+  } finally {
+    localConfigFileInput.value = "";
+  }
+});
+
+exportConfigButton.addEventListener("click", () => {
+  const validation = validateSettings(readFormSettings());
+
+  if (!validation.ok) {
+    renderStatus(validation.errors.join("\n"), "error");
+    return;
+  }
+
+  const config = settingsToRuleConfig(validation.settings);
+  downloadJson(config, "idea-input-switch-config.json");
+  renderStatus("规则已导出。", "success");
+});
+
 async function loadSettings() {
   const settings = await getSettings();
+  renderSettings(settings);
+}
+
+function renderSettings(settings) {
   baseUrlInput.value = settings.baseUrl;
   chinesePatternsInput.value = settings.chinesePatterns;
   englishPatternsInput.value = settings.englishPatterns;
@@ -101,4 +170,37 @@ function addRuleLine(builder) {
   builder.input.value = "";
   builder.input.focus();
   renderStatus("规则已添加，保存后生效。", "success");
+}
+
+function readFormSettings() {
+  return {
+    baseUrl: baseUrlInput.value,
+    chinesePatterns: chinesePatternsInput.value,
+    englishPatterns: englishPatternsInput.value
+  };
+}
+
+async function importRuleConfig(config) {
+  const currentSettings = await getSettings();
+  const settings = ruleConfigToSettings(config, currentSettings);
+  await saveSettings(settings);
+  renderSettings(settings);
+}
+
+function downloadJson(data, fileName) {
+  const blob = new Blob([`${JSON.stringify(data, null, 2)}\n`], {
+    type: "application/json;charset=utf-8"
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function formatError(error) {
+  return error instanceof Error ? error.message : String(error);
 }

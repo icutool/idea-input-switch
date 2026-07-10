@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "baseUrl": "http://127.0.0.1:5998",
+  "rules": {
+    "chinese": [
+      {
+        "type": "domain",
+        "value": "https://www.baidu.com/"
+      }
+    ],
+    "english": [
+      {
+        "type": "keyword",
+        "value": "luna"
+      }
+    ]
+  }
+}

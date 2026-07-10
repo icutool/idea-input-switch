@@ -89,6 +89,29 @@
           <p>命中后插件图标会短暂显示 CN / EN / ERR。</p>
         </div>
 
+        <section class="import-export">
+          <h2>规则导入导出</h2>
+          <label class="field compact">
+            <span>远程 JSON 地址</span>
+            <div class="inline-action">
+              <input
+                id="remoteConfigUrl"
+                type="url"
+                placeholder="https://example.com/config.json"
+                spellcheck="false"
+              >
+              <button id="importRemoteConfig" class="secondary-button" type="button">导入</button>
+            </div>
+          </label>
+          <div class="file-actions">
+            <label class="file-button">
+              选择 JSON 导入
+              <input id="localConfigFile" type="file" accept="application/json,.json">
+            </label>
+            <button id="exportConfig" class="secondary-button" type="button">导出 JSON</button>
+          </div>
+        </section>
+
         <button class="save-button" type="submit">保存配置</button>
         <p id="status" class="status" aria-live="polite"></p>
       </form>

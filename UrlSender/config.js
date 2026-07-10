@@ -6,6 +6,10 @@ export const DEFAULT_SETTINGS = {
   englishPatterns: ""
 };
 
+export const RULE_CONFIG_VERSION = 1;
+
+const RULE_TYPES = new Set(["keyword", "domain", "prefix", "regex"]);
+
 export async function getSettings() {
   const stored = await chrome.storage.local.get(STORAGE_KEY);
   return {
@@ -31,7 +35,7 @@ export function normalizeBaseUrl(input) {
   return input.trim().replace(/\/+$/u, "");
 }
 
-function parseRuleLine(line) {
+export function parseRuleLine(line) {
   const prefixes = [
     ["keyword", ["关键词:", "关键字:", "包含:", "keyword:", "kw:"]],
     ["domain", ["域名:", "域名精准:", "精准域名:", "domain:", "host:"]],
@@ -54,6 +58,106 @@ function parseRuleLine(line) {
     type: "regex",
     value: line
   };
+}
+
+export function formatRuleLine(rule) {
+  const labels = {
+    keyword: "关键词",
+    domain: "域名",
+    prefix: "前缀",
+    regex: "正则"
+  };
+  const type = RULE_TYPES.has(rule.type) ? rule.type : "regex";
+  return `${labels[type]}: ${String(rule.value || "").trim()}`;
+}
+
+function normalizeRuleList(rules, fieldName) {
+  if (!Array.isArray(rules)) {
+    throw new Error(`${fieldName} 必须是数组。`);
+  }
+
+  return rules.map((rule, index) => {
+    if (typeof rule === "string") {
+      const parsed = parseRuleLine(rule.trim());
+      return {
+        type: parsed.type,
+        value: parsed.value
+      };
+    }
+
+    if (!rule || typeof rule !== "object") {
+      throw new Error(`${fieldName} 第 ${index + 1} 条规则格式不正确。`);
+    }
+
+    const type = String(rule.type || "").trim().toLowerCase();
+    const value = String(rule.value || "").trim();
+
+    if (!RULE_TYPES.has(type)) {
+      throw new Error(`${fieldName} 第 ${index + 1} 条规则类型不支持: ${type || "<empty>"}。`);
+    }
+
+    if (!value) {
+      throw new Error(`${fieldName} 第 ${index + 1} 条规则内容不能为空。`);
+    }
+
+    return { type, value };
+  });
+}
+
+function patternTextToRules(input) {
+  return splitPatternLines(input).map((line) => {
+    const rule = parseRuleLine(line);
+    return {
+      type: rule.type,
+      value: rule.value
+    };
+  });
+}
+
+function rulesToPatternText(rules) {
+  return rules.map((rule) => formatRuleLine(rule)).join("\n");
+}
+
+export function settingsToRuleConfig(settings) {
+  return {
+    version: RULE_CONFIG_VERSION,
+    baseUrl: normalizeBaseUrl(settings.baseUrl || DEFAULT_SETTINGS.baseUrl),
+    rules: {
+      chinese: patternTextToRules(settings.chinesePatterns || ""),
+      english: patternTextToRules(settings.englishPatterns || "")
+    }
+  };
+}
+
+export function ruleConfigToSettings(config, fallbackSettings = DEFAULT_SETTINGS) {
+  if (!config || typeof config !== "object") {
+    throw new Error("配置文件必须是 JSON 对象。");
+  }
+
+  if (config.version !== undefined && Number(config.version) !== RULE_CONFIG_VERSION) {
+    throw new Error(`配置文件版本不支持: ${config.version}。`);
+  }
+
+  const rules = config.rules;
+  if (!rules || typeof rules !== "object") {
+    throw new Error("配置文件缺少 rules 对象。");
+  }
+
+  const chineseRules = normalizeRuleList(rules.chinese || [], "rules.chinese");
+  const englishRules = normalizeRuleList(rules.english || [], "rules.english");
+
+  const settings = {
+    baseUrl: config.baseUrl ? normalizeBaseUrl(String(config.baseUrl)) : fallbackSettings.baseUrl,
+    chinesePatterns: rulesToPatternText(chineseRules),
+    englishPatterns: rulesToPatternText(englishRules)
+  };
+  const validation = validateSettings(settings);
+
+  if (!validation.ok) {
+    throw new Error(validation.errors.join("\n"));
+  }
+
+  return validation.settings;
 }
 
 function safeDecodeUrl(url) {

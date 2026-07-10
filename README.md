@@ -106,6 +106,33 @@ curl "http://127.0.0.1:5998/switch?mode=0"
 - `mode=0`：切换英文输入
 - 也兼容 `http://127.0.0.1:5998/1` 和 `http://127.0.0.1:5998/0`
 
+## 浏览器插件规则配置
+
+`UrlSender` 插件支持导入和导出 JSON 规则文件。根目录提供了 `config.json` 示例：
+
+```json
+{
+  "version": 1,
+  "baseUrl": "http://127.0.0.1:5998",
+  "rules": {
+    "chinese": [
+      {
+        "type": "domain",
+        "value": "https://www.baidu.com/"
+      }
+    ],
+    "english": [
+      {
+        "type": "keyword",
+        "value": "luna"
+      }
+    ]
+  }
+}
+```
+
+插件弹窗中可以输入远程 JSON 地址导入，也可以选择本地 JSON 文件导入；导出按钮会把当前浏览器配置保存为同样格式的 JSON 文件。
+
 ## 日志
 
 程序启动后会在 `IdeaInputSwitch.exe` 同级目录创建 `logs` 文件夹，并按日志等级写入：

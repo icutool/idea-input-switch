@@ -8,6 +8,7 @@
 - 可以分别配置“中文输入法网址规则”和“英文输入法网址规则”。
 - 新增规则时可以在弹窗中选择“关键词 / 域名 / 前缀 / 正则”后添加。
 - 每行一条规则，支持关键词匹配、域名精准匹配、域名前缀匹配、正则匹配。
+- 支持从远程 JSON 地址导入规则、选择本地 JSON 文件导入规则、导出当前规则为 JSON 文件。
 - 当访问新的网页地址时：
   - 命中中文规则，调用 `baseUrl/switch?mode=1`
   - 命中英文规则，调用 `baseUrl/switch?mode=0`
@@ -56,3 +57,36 @@ http://127.0.0.1:5998
 - `正则: ^https://mail\.qq\.com/`：按 JavaScript 正则匹配整条 URL。
 
 为了兼容旧配置，不写前缀的行仍然按正则处理。
+
+## JSON 规则导入导出
+
+弹窗中的“规则导入导出”区域支持三种操作：
+
+- 输入远程地址，例如 `https://example.com/config.json`，点击“导入”后会下载 JSON 并保存到浏览器配置。
+- 点击“选择 JSON 导入”，选择本地 `.json` 文件后会保存到浏览器配置。
+- 点击“导出 JSON”，会把当前规则导出为可分享的 JSON 文件。
+
+JSON 格式如下：
+
+```json
+{
+  "version": 1,
+  "baseUrl": "http://127.0.0.1:5998",
+  "rules": {
+    "chinese": [
+      {
+        "type": "domain",
+        "value": "https://www.baidu.com/"
+      }
+    ],
+    "english": [
+      {
+        "type": "keyword",
+        "value": "luna"
+      }
+    ]
+  }
+}
+```
+
+根目录的 `config.json` 是示例文件，可以直接用于导入测试。

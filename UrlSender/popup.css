@@ -44,6 +44,10 @@ h1 {
   margin-bottom: 14px;
 }
 
+.field.compact {
+  margin-bottom: 10px;
+}
+
 .field span {
   display: block;
   margin-bottom: 6px;
@@ -117,6 +121,59 @@ textarea {
 
 .tips p + p {
   margin-top: 4px;
+}
+
+.import-export {
+  margin: 0 0 16px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.import-export h2 {
+  margin: 0 0 10px;
+  font-size: 15px;
+}
+
+.inline-action {
+  display: grid;
+  grid-template-columns: 1fr 72px;
+  gap: 8px;
+}
+
+.file-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.secondary-button,
+.file-button {
+  min-height: 40px;
+  border: 1px solid rgba(37, 99, 235, 0.28);
+  border-radius: 10px;
+  background: rgba(37, 99, 235, 0.08);
+  color: var(--accent-strong);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+
+.secondary-button:hover,
+.file-button:hover {
+  background: rgba(37, 99, 235, 0.14);
+}
+
+.file-button {
+  display: grid;
+  place-items: center;
+  padding: 0 12px;
+  text-align: center;
+}
+
+.file-button input {
+  display: none;
 }
 
 .save-button {
