@@ -7,6 +7,7 @@ import {
 } from "./config.js";
 
 const LOG_STORAGE_KEY = "urlSenderLogs";
+const LOG_ENABLED_STORAGE_KEY = "urlSenderLogEnabled";
 const form = document.getElementById("settings-form");
 const baseUrlInput = document.getElementById("baseUrl");
 const chinesePatternsInput = document.getElementById("chinesePatterns");
@@ -18,7 +19,12 @@ const exportConfigButton = document.getElementById("exportConfig");
 const statusElement = document.getElementById("status");
 const refreshLogsButton = document.getElementById("refreshLogs");
 const clearLogsButton = document.getElementById("clearLogs");
+const logEnabledInput = document.getElementById("logEnabled");
+const logSwitchHintElement = document.getElementById("logSwitchHint");
 const urlLogsElement = document.getElementById("urlLogs");
+const tabButtons = Array.from(document.querySelectorAll("[data-tab]"));
+const tabPanels = Array.from(document.querySelectorAll("[data-tab-panel]"));
+const settingsActions = document.querySelector("[data-settings-actions]");
 const ruleLabels = {
   keyword: "关键词",
   exact: "精准匹配",
@@ -48,6 +54,13 @@ const ruleBuilders = [
 
 void loadSettings();
 void loadLogs();
+void loadLogSwitch();
+
+tabButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    activateTab(button.dataset.tab);
+  });
+});
 
 ruleBuilders.forEach((builder) => {
   updateRuleInputPlaceholder(builder);
@@ -151,11 +164,38 @@ clearLogsButton.addEventListener("click", async () => {
   renderStatus("URL 日志已清空。", "success");
 });
 
+logEnabledInput.addEventListener("change", async () => {
+  const enabled = logEnabledInput.checked;
+  await chrome.storage.local.set({ [LOG_ENABLED_STORAGE_KEY]: enabled });
+  renderLogSwitch(enabled);
+});
+
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName === "local" && changes[LOG_STORAGE_KEY]) {
     renderLogs(changes[LOG_STORAGE_KEY].newValue || []);
   }
+  if (areaName === "local" && changes[LOG_ENABLED_STORAGE_KEY]) {
+    renderLogSwitch(changes[LOG_ENABLED_STORAGE_KEY].newValue === true);
+  }
 });
+
+function activateTab(tabName) {
+  tabButtons.forEach((button) => {
+    const active = button.dataset.tab === tabName;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+  });
+
+  tabPanels.forEach((panel) => {
+    panel.classList.toggle("active", panel.dataset.tabPanel === tabName);
+  });
+
+  settingsActions.classList.toggle("hidden", tabName === "logs");
+
+  if (tabName === "logs") {
+    void loadLogs();
+  }
+}
 
 async function loadSettings() {
   const settings = await getSettings();
@@ -176,6 +216,18 @@ function renderStatus(message, type) {
 async function loadLogs() {
   const stored = await chrome.storage.local.get(LOG_STORAGE_KEY);
   renderLogs(Array.isArray(stored[LOG_STORAGE_KEY]) ? stored[LOG_STORAGE_KEY] : []);
+}
+
+async function loadLogSwitch() {
+  const stored = await chrome.storage.local.get(LOG_ENABLED_STORAGE_KEY);
+  renderLogSwitch(stored[LOG_ENABLED_STORAGE_KEY] === true);
+}
+
+function renderLogSwitch(enabled) {
+  logEnabledInput.checked = enabled;
+  logSwitchHintElement.textContent = enabled
+    ? "日志采集中。关闭后会停止新增记录，已有日志会保留。"
+    : "日志采集已关闭。开启后才会记录新的 URL。";
 }
 
 function renderLogs(logs) {

@@ -9,126 +9,145 @@
   <body>
     <main class="panel">
       <h1>Url Sender</h1>
-      <p class="intro">访问新地址时，按下面的规则自动切换中英文输入模式。</p>
+      <p class="intro">访问新地址时，按规则自动切换中英文输入模式。</p>
+
+      <nav class="tab-nav" aria-label="功能菜单">
+        <button class="tab-button active" type="button" data-tab="rules">规则</button>
+        <button class="tab-button" type="button" data-tab="config">配置</button>
+        <button class="tab-button" type="button" data-tab="logs">日志</button>
+      </nav>
 
       <form id="settings-form">
-        <label class="field">
-          <span>后台地址</span>
-          <input
-            id="baseUrl"
-            name="baseUrl"
-            type="url"
-            placeholder="http://127.0.0.1:5998"
-            spellcheck="false"
-          >
-        </label>
-
-        <label class="field">
-          <span>中文输入法网址规则</span>
-          <div class="rule-builder">
-            <select id="chineseRuleType" aria-label="中文规则匹配方式">
-              <option value="keyword">关键词</option>
-              <option value="exact">精准匹配</option>
-              <option value="prefix">前缀</option>
-              <option value="regex">正则</option>
-            </select>
-            <input
-              id="chineseRuleValue"
-              type="text"
-              placeholder="输入关键词"
-              spellcheck="false"
-            >
-            <button id="addChineseRule" class="add-rule-button" type="button">添加</button>
-          </div>
-          <textarea
-            id="chinesePatterns"
-            name="chinesePatterns"
-            rows="6"
-            placeholder="关键词: docs
+        <section class="tab-panel active" data-tab-panel="rules">
+          <label class="field">
+            <span>中文输入法网址规则</span>
+            <div class="rule-builder">
+              <select id="chineseRuleType" aria-label="中文规则匹配方式">
+                <option value="keyword">关键词</option>
+                <option value="exact">精准匹配</option>
+                <option value="prefix">前缀</option>
+                <option value="regex">正则</option>
+              </select>
+              <input
+                id="chineseRuleValue"
+                type="text"
+                placeholder="输入关键词"
+                spellcheck="false"
+              >
+              <button id="addChineseRule" class="add-rule-button" type="button">添加</button>
+            </div>
+            <textarea
+              id="chinesePatterns"
+              name="chinesePatterns"
+              rows="6"
+              placeholder="关键词: docs
 精准匹配: https://www.baidu.com/
 前缀: https://baidu.com/query
 正则: ^https://mail\\.qq\\.com/"
-            spellcheck="false"
-          ></textarea>
-        </label>
-
-        <label class="field">
-          <span>英文输入法网址规则</span>
-          <div class="rule-builder">
-            <select id="englishRuleType" aria-label="英文规则匹配方式">
-              <option value="keyword">关键词</option>
-              <option value="exact">精准匹配</option>
-              <option value="prefix">前缀</option>
-              <option value="regex">正则</option>
-            </select>
-            <input
-              id="englishRuleValue"
-              type="text"
-              placeholder="输入关键词"
               spellcheck="false"
-            >
-            <button id="addEnglishRule" class="add-rule-button" type="button">添加</button>
-          </div>
-          <textarea
-            id="englishPatterns"
-            name="englishPatterns"
-            rows="6"
-            placeholder="关键词: github
+            ></textarea>
+          </label>
+
+          <label class="field">
+            <span>英文输入法网址规则</span>
+            <div class="rule-builder">
+              <select id="englishRuleType" aria-label="英文规则匹配方式">
+                <option value="keyword">关键词</option>
+                <option value="exact">精准匹配</option>
+                <option value="prefix">前缀</option>
+                <option value="regex">正则</option>
+              </select>
+              <input
+                id="englishRuleValue"
+                type="text"
+                placeholder="输入关键词"
+                spellcheck="false"
+              >
+              <button id="addEnglishRule" class="add-rule-button" type="button">添加</button>
+            </div>
+            <textarea
+              id="englishPatterns"
+              name="englishPatterns"
+              rows="6"
+              placeholder="关键词: github
 精准匹配: https://github.com/
 前缀: https://stackoverflow.com/questions
 正则: ^https://.*\\.example\\.com/"
-            spellcheck="false"
-          ></textarea>
-        </label>
-
-        <div class="tips">
-          <p>每行一种规则：关键词、精准匹配、前缀、正则。</p>
-          <p>精准匹配会把当前 URL 和规则内容做 equals 比较，完全相同才命中。</p>
-          <p>前缀会匹配相同协议、主机名和路径下级，查询参数不影响命中。</p>
-          <p>中文规则优先于英文规则。</p>
-          <p>命中后插件图标会短暂显示 CN / EN / ERR。</p>
-        </div>
-
-        <section class="import-export">
-          <h2>规则导入导出</h2>
-          <label class="field compact">
-            <span>远程 JSON 地址</span>
-            <div class="inline-action">
-              <input
-                id="remoteConfigUrl"
-                type="url"
-                placeholder="https://example.com/config.json"
-                spellcheck="false"
-              >
-              <button id="importRemoteConfig" class="secondary-button" type="button">导入</button>
-            </div>
+              spellcheck="false"
+            ></textarea>
           </label>
-          <div class="file-actions">
-            <label class="file-button">
-              选择 JSON 导入
-              <input id="localConfigFile" type="file" accept="application/json,.json">
-            </label>
-            <button id="exportConfig" class="secondary-button" type="button">导出 JSON</button>
+
+          <div class="tips">
+            <p>每行一种规则：关键词、精准匹配、前缀、正则。</p>
+            <p>中文规则优先于英文规则。命中后插件图标会短暂显示 CN / EN / ERR。</p>
           </div>
         </section>
 
-        <button class="save-button" type="submit">保存配置</button>
-        <p id="status" class="status" aria-live="polite"></p>
-      </form>
+        <section class="tab-panel" data-tab-panel="config">
+          <label class="field">
+            <span>后台地址</span>
+            <input
+              id="baseUrl"
+              name="baseUrl"
+              type="url"
+              placeholder="http://127.0.0.1:5998"
+              spellcheck="false"
+            >
+          </label>
 
-      <section class="url-log">
-        <div class="section-header">
-          <div>
-            <h2>最近 URL 日志</h2>
-            <p>后台捕获到的页面地址会显示在这里。</p>
-          </div>
-          <div class="log-actions">
-            <button id="refreshLogs" class="secondary-button" type="button">刷新</button>
-            <button id="clearLogs" class="secondary-button danger" type="button">清空</button>
-          </div>
+          <section class="import-export">
+            <h2>规则导入导出</h2>
+            <label class="field compact">
+              <span>远程 JSON 地址</span>
+              <div class="inline-action">
+                <input
+                  id="remoteConfigUrl"
+                  type="url"
+                  placeholder="https://example.com/config.json"
+                  spellcheck="false"
+                >
+                <button id="importRemoteConfig" class="secondary-button" type="button">导入</button>
+              </div>
+            </label>
+            <div class="file-actions">
+              <label class="file-button">
+                选择 JSON 导入
+                <input id="localConfigFile" type="file" accept="application/json,.json">
+              </label>
+              <button id="exportConfig" class="secondary-button" type="button">导出 JSON</button>
+            </div>
+          </section>
+        </section>
+
+        <section class="tab-panel" data-tab-panel="logs">
+          <section class="url-log">
+            <div class="section-header">
+              <div>
+                <h2>最近 URL 日志</h2>
+                <p>后台捕获到的页面地址会显示在这里。</p>
+              </div>
+              <label class="switch-control">
+                <input id="logEnabled" type="checkbox">
+                <span class="switch-track"></span>
+                <span>采集日志</span>
+              </label>
+            </div>
+            <div class="log-toolbar">
+              <p id="logSwitchHint" class="log-switch-hint"></p>
+              <div class="log-actions">
+                <button id="refreshLogs" class="secondary-button" type="button">刷新</button>
+                <button id="clearLogs" class="secondary-button danger" type="button">清空</button>
+              </div>
+            </div>
+            <div id="urlLogs" class="log-list" aria-live="polite"></div>
+          </section>
+        </section>
+
+        <div class="form-actions" data-settings-actions>
+          <button class="save-button" type="submit">保存配置</button>
+          <p id="status" class="status" aria-live="polite"></p>
         </div>
-        <div id="urlLogs" class="log-list" aria-live="polite"></div>
-      </section>
+      </form>
     </main>
 
     <script type="module" src="popup.js"></script>

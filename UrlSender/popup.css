@@ -15,9 +15,17 @@
   box-sizing: border-box;
 }
 
+html {
+  width: 420px;
+  height: 600px;
+  overflow: hidden;
+}
+
 body {
   margin: 0;
-  min-width: 380px;
+  width: 420px;
+  height: 600px;
+  overflow: hidden;
   background:
     radial-gradient(circle at top right, rgba(37, 99, 235, 0.14), transparent 36%),
     linear-gradient(180deg, #f9fbff 0%, var(--bg) 100%);
@@ -26,6 +34,10 @@ body {
 }
 
 .panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
   padding: 18px;
 }
 
@@ -37,6 +49,64 @@ h1 {
 .intro {
   margin: 0 0 16px;
   color: var(--muted);
+}
+
+.tab-nav {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  margin: 0 0 14px;
+  padding: 4px;
+  border: 1px solid rgba(214, 220, 232, 0.82);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.74);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.tab-button {
+  min-height: 36px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+
+.tab-button:hover {
+  background: rgba(37, 99, 235, 0.08);
+  color: var(--accent-strong);
+}
+
+.tab-button.active {
+  background: #ffffff;
+  color: var(--accent-strong);
+  box-shadow:
+    0 1px 2px rgba(16, 35, 63, 0.08),
+    0 0 0 1px rgba(37, 99, 235, 0.12);
+}
+
+.tab-panel {
+  display: none;
+  min-height: 0;
+}
+
+.tab-panel.active {
+  display: block;
+  flex: 1 1 auto;
+  max-height: none;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: 6px;
+  scrollbar-gutter: stable;
+}
+
+#settings-form {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .field {
@@ -77,6 +147,35 @@ textarea:focus {
 textarea {
   resize: vertical;
   min-height: 110px;
+}
+
+.tab-panel.active::-webkit-scrollbar,
+.log-list::-webkit-scrollbar,
+textarea::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.tab-panel.active::-webkit-scrollbar-track,
+.log-list::-webkit-scrollbar-track,
+textarea::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.tab-panel.active::-webkit-scrollbar-thumb,
+.log-list::-webkit-scrollbar-thumb,
+textarea::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgba(93, 107, 130, 0.28);
+  background-clip: content-box;
+}
+
+.tab-panel.active::-webkit-scrollbar-thumb:hover,
+.log-list::-webkit-scrollbar-thumb:hover,
+textarea::-webkit-scrollbar-thumb:hover {
+  background: rgba(93, 107, 130, 0.46);
+  background-clip: content-box;
 }
 
 .rule-builder {
@@ -153,6 +252,52 @@ textarea {
   margin: 0;
   color: var(--muted);
   font-size: 12px;
+}
+
+.switch-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.switch-control input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.switch-track {
+  position: relative;
+  width: 42px;
+  height: 24px;
+  border-radius: 999px;
+  background: #cbd5e1;
+  transition: background 0.16s ease;
+}
+
+.switch-track::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(16, 35, 63, 0.24);
+  transition: transform 0.16s ease;
+}
+
+.switch-control input:checked + .switch-track {
+  background: var(--accent);
+}
+
+.switch-control input:checked + .switch-track::after {
+  transform: translateX(18px);
 }
 
 .inline-action {
@@ -235,8 +380,16 @@ textarea {
   color: var(--error);
 }
 
+.form-actions.hidden {
+  display: none;
+}
+
+.form-actions {
+  flex: 0 0 auto;
+}
+
 .url-log {
-  margin-top: 16px;
+  margin: 0;
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 14px;
@@ -248,6 +401,20 @@ textarea {
   gap: 8px;
 }
 
+.log-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.log-switch-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .log-actions .secondary-button {
   min-height: 32px;
   padding: 0 10px;
@@ -257,8 +424,7 @@ textarea {
 .log-list {
   display: grid;
   gap: 8px;
-  max-height: 260px;
-  overflow: auto;
+  overflow: visible;
   padding-right: 2px;
 }
 

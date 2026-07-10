@@ -2,6 +2,7 @@ import { getModeForUrl, getSettings } from "./config.js";
 
 const lastProcessedEventByTab = new Map();
 const LOG_STORAGE_KEY = "urlSenderLogs";
+const LOG_ENABLED_STORAGE_KEY = "urlSenderLogEnabled";
 const MAX_LOG_ENTRIES = 200;
 
 chrome.runtime.onInstalled.addListener(async () => {
@@ -152,6 +153,10 @@ function logUrlEvent(event) {
 }
 
 async function appendUrlLog(event, detail) {
+  if (!(await isUrlLogEnabled())) {
+    return;
+  }
+
   const entry = {
     id: `${Date.now()}:${Math.random().toString(16).slice(2)}`,
     time: new Date().toISOString(),
@@ -176,6 +181,16 @@ async function appendUrlLog(event, detail) {
     });
   } catch (error) {
     console.debug("[UrlSender] Failed to append URL log.", error);
+  }
+}
+
+async function isUrlLogEnabled() {
+  try {
+    const stored = await chrome.storage.local.get(LOG_ENABLED_STORAGE_KEY);
+    return stored[LOG_ENABLED_STORAGE_KEY] === true;
+  } catch (error) {
+    console.debug("[UrlSender] Failed to read URL log switch.", error);
+    return false;
   }
 }
 
