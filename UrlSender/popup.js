@@ -6,6 +6,7 @@ import {
   validateSettings
 } from "./config.js";
 
+const LOG_STORAGE_KEY = "urlSenderLogs";
 const form = document.getElementById("settings-form");
 const baseUrlInput = document.getElementById("baseUrl");
 const chinesePatternsInput = document.getElementById("chinesePatterns");
@@ -15,6 +16,9 @@ const importRemoteConfigButton = document.getElementById("importRemoteConfig");
 const localConfigFileInput = document.getElementById("localConfigFile");
 const exportConfigButton = document.getElementById("exportConfig");
 const statusElement = document.getElementById("status");
+const refreshLogsButton = document.getElementById("refreshLogs");
+const clearLogsButton = document.getElementById("clearLogs");
+const urlLogsElement = document.getElementById("urlLogs");
 const ruleLabels = {
   keyword: "关键词",
   exact: "精准匹配",
@@ -43,6 +47,7 @@ const ruleBuilders = [
 ];
 
 void loadSettings();
+void loadLogs();
 
 ruleBuilders.forEach((builder) => {
   updateRuleInputPlaceholder(builder);
@@ -136,6 +141,22 @@ exportConfigButton.addEventListener("click", () => {
   renderStatus("规则已导出。", "success");
 });
 
+refreshLogsButton.addEventListener("click", () => {
+  void loadLogs();
+});
+
+clearLogsButton.addEventListener("click", async () => {
+  await chrome.storage.local.set({ [LOG_STORAGE_KEY]: [] });
+  renderLogs([]);
+  renderStatus("URL 日志已清空。", "success");
+});
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === "local" && changes[LOG_STORAGE_KEY]) {
+    renderLogs(changes[LOG_STORAGE_KEY].newValue || []);
+  }
+});
+
 async function loadSettings() {
   const settings = await getSettings();
   renderSettings(settings);
@@ -150,6 +171,93 @@ function renderSettings(settings) {
 function renderStatus(message, type) {
   statusElement.textContent = message;
   statusElement.className = `status ${type}`;
+}
+
+async function loadLogs() {
+  const stored = await chrome.storage.local.get(LOG_STORAGE_KEY);
+  renderLogs(Array.isArray(stored[LOG_STORAGE_KEY]) ? stored[LOG_STORAGE_KEY] : []);
+}
+
+function renderLogs(logs) {
+  urlLogsElement.replaceChildren();
+
+  if (logs.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "log-empty";
+    empty.textContent = "暂无 URL 日志。访问或切换网页后会出现在这里。";
+    urlLogsElement.append(empty);
+    return;
+  }
+
+  logs.slice(0, 80).forEach((log) => {
+    const item = document.createElement("article");
+    item.className = `log-item ${log.status || "unknown"}`;
+
+    const meta = document.createElement("div");
+    meta.className = "log-meta";
+
+    const badge = document.createElement("span");
+    badge.className = "log-badge";
+    badge.textContent = statusLabel(log.status);
+
+    const time = document.createElement("span");
+    time.textContent = formatLogTime(log.time);
+
+    const source = document.createElement("span");
+    source.textContent = `${log.trigger || "unknown"} · tab ${log.tabId ?? "-"} · frame ${log.frameId ?? "-"}`;
+
+    meta.append(badge, time, source);
+
+    const url = document.createElement("div");
+    url.className = "log-url";
+    url.textContent = log.url || "<empty>";
+
+    const message = document.createElement("div");
+    message.className = "log-message";
+    message.textContent = buildLogMessage(log);
+
+    item.append(meta, url, message);
+    urlLogsElement.append(item);
+  });
+}
+
+function statusLabel(status) {
+  const labels = {
+    match: "命中",
+    none: "未命中",
+    skip: "跳过",
+    error: "错误"
+  };
+  return labels[status] || "日志";
+}
+
+function buildLogMessage(log) {
+  const parts = [log.message || "URL 事件"];
+  if (log.rule) {
+    parts.push(`规则: ${log.rule}`);
+  }
+  if (log.requestUrl) {
+    parts.push(`请求: ${log.requestUrl}`);
+  }
+  return parts.join(" · ");
+}
+
+function formatLogTime(value) {
+  if (!value) {
+    return "--:--:--";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleTimeString("zh-CN", {
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  });
 }
 
 function updateRuleInputPlaceholder(builder) {

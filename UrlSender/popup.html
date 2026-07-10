@@ -115,6 +115,20 @@
         <button class="save-button" type="submit">保存配置</button>
         <p id="status" class="status" aria-live="polite"></p>
       </form>
+
+      <section class="url-log">
+        <div class="section-header">
+          <div>
+            <h2>最近 URL 日志</h2>
+            <p>后台捕获到的页面地址会显示在这里。</p>
+          </div>
+          <div class="log-actions">
+            <button id="refreshLogs" class="secondary-button" type="button">刷新</button>
+            <button id="clearLogs" class="secondary-button danger" type="button">清空</button>
+          </div>
+        </div>
+        <div id="urlLogs" class="log-list" aria-live="polite"></div>
+      </section>
     </main>
 
     <script type="module" src="popup.js"></script>

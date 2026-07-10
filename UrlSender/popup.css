@@ -136,6 +136,25 @@ textarea {
   font-size: 15px;
 }
 
+.section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.section-header h2 {
+  margin: 0 0 2px;
+  font-size: 15px;
+}
+
+.section-header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .inline-action {
   display: grid;
   grid-template-columns: 1fr 72px;
@@ -163,6 +182,16 @@ textarea {
 .secondary-button:hover,
 .file-button:hover {
   background: rgba(37, 99, 235, 0.14);
+}
+
+.secondary-button.danger {
+  border-color: rgba(180, 35, 24, 0.24);
+  background: rgba(180, 35, 24, 0.07);
+  color: var(--error);
+}
+
+.secondary-button.danger:hover {
+  background: rgba(180, 35, 24, 0.12);
 }
 
 .file-button {
@@ -204,4 +233,91 @@ textarea {
 
 .status.error {
   color: var(--error);
+}
+
+.url-log {
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.log-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.log-actions .secondary-button {
+  min-height: 32px;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+.log-list {
+  display: grid;
+  gap: 8px;
+  max-height: 260px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.log-empty {
+  margin: 0;
+  color: var(--muted);
+}
+
+.log-item {
+  padding: 9px 10px;
+  border: 1px solid rgba(214, 220, 232, 0.8);
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.log-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.log-badge {
+  border-radius: 999px;
+  padding: 2px 7px;
+  background: rgba(93, 107, 130, 0.12);
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.log-item.match .log-badge {
+  background: rgba(22, 101, 52, 0.1);
+  color: var(--success);
+}
+
+.log-item.none .log-badge {
+  background: rgba(37, 99, 235, 0.1);
+  color: var(--accent-strong);
+}
+
+.log-item.error .log-badge {
+  background: rgba(180, 35, 24, 0.1);
+  color: var(--error);
+}
+
+.log-url {
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.log-message {
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 12px;
 }
