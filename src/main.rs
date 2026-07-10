@@ -58,21 +58,30 @@ struct AppContext {
 
 fn main() -> Result<()> {
     init_logging();
+    info!(
+        pid = std::process::id(),
+        "IdeaInputSwitch process starting"
+    );
 
     // ── 单例检测 ───────────────────────────────────────────
     let _mutex_guard = match try_acquire_single_instance() {
         SingleInstanceResult::AlreadyRunning(handle) => {
             // 已有实例运行，弹出提示后退出
+            warn!("another IdeaInputSwitch instance is already running; exiting before starting HTTP server");
             show_already_running_notification(handle);
             return Ok(());
         }
-        SingleInstanceResult::FirstInstance(handle) => handle,
+        SingleInstanceResult::FirstInstance(handle) => {
+            info!("single instance lock acquired");
+            handle
+        }
     };
 
     let (sender, receiver) = channel();
     let (http_sender, http_receiver) = channel();
     let autostart_enabled = autostart::is_enabled().unwrap_or(false);
     let input_method = config::load_input_method();
+    info!(autostart_enabled, ?input_method, "application config loaded");
 
     APP_CONTEXT
         .set(Mutex::new(AppContext {
@@ -105,10 +114,12 @@ fn main() -> Result<()> {
 
     info!("IdeaInputSwitch started");
     run_message_loop()?;
+    info!("message loop exited; shutting down");
 
     http_server.stop();
     hook_thread.stop();
     tray::remove_icon(hwnd);
+    info!("IdeaInputSwitch stopped");
     Ok(())
 }
 
@@ -226,7 +237,15 @@ fn try_init_logging() -> Result<()> {
         .context("failed to initialize tracing subscriber")?;
 
     let _ = LOG_GUARDS.set(vec![info_guard, warn_guard, error_guard]);
-    info!(logs_dir = %logs_dir.display(), "file logging initialized");
+    let exe_path = std::env::current_exe()
+        .map(|path| path.display().to_string())
+        .unwrap_or_else(|_| "<unknown>".to_string());
+    info!(
+        pid = std::process::id(),
+        exe_path = %exe_path,
+        logs_dir = %logs_dir.display(),
+        "file logging initialized"
+    );
     Ok(())
 }
 

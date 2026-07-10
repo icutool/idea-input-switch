@@ -83,11 +83,13 @@ impl SwitchResponse {
 
 pub fn start(sender: Sender<SwitchRequest>, hwnd: HWND, message_id: u32) -> Result<HttpServer> {
     let bind_addr = format!("{BIND_HOST}:{PORT}");
+    info!(bind_addr = %bind_addr, "starting HTTP server");
     let listener = TcpListener::bind(&bind_addr)
         .with_context(|| format!("failed to bind HTTP server on {bind_addr}"))?;
     listener
         .set_nonblocking(true)
         .context("failed to set HTTP listener nonblocking")?;
+    info!(bind_addr = %bind_addr, "HTTP server bound");
 
     let stop_flag = Arc::new(AtomicBool::new(false));
     let stop_flag_for_thread = Arc::clone(&stop_flag);
@@ -116,6 +118,8 @@ pub fn start(sender: Sender<SwitchRequest>, hwnd: HWND, message_id: u32) -> Resu
                 }
             }
         }
+
+        info!("HTTP server stopped");
     });
 
     Ok(HttpServer {
