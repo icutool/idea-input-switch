@@ -66,7 +66,7 @@ async function handleNavigation(event) {
   const decision = getModeForUrl(event.url, settings);
 
   if (decision.invalidRules.length > 0) {
-    console.warn("[UrlSender] Some regex rules are invalid and were skipped.", decision.invalidRules);
+    console.warn("[UrlSender] Some rules are invalid and were skipped.", decision.invalidRules);
   }
 
   if (decision.mode === null) {

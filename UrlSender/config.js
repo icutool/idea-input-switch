@@ -31,21 +31,169 @@ export function normalizeBaseUrl(input) {
   return input.trim().replace(/\/+$/u, "");
 }
 
+function parseRuleLine(line) {
+  const prefixes = [
+    ["keyword", ["关键词:", "关键字:", "包含:", "keyword:", "kw:"]],
+    ["domain", ["域名:", "域名精准:", "精准域名:", "domain:", "host:"]],
+    ["prefix", ["前缀:", "域名前缀:", "url前缀:", "prefix:", "url:"]],
+    ["regex", ["正则:", "regex:", "regexp:", "re:"]]
+  ];
+
+  const lowerLine = line.toLowerCase();
+  for (const [type, labels] of prefixes) {
+    const label = labels.find((candidate) => lowerLine.startsWith(candidate.toLowerCase()));
+    if (label) {
+      return {
+        type,
+        value: line.slice(label.length).trim()
+      };
+    }
+  }
+
+  return {
+    type: "regex",
+    value: line
+  };
+}
+
+function safeDecodeUrl(url) {
+  try {
+    return decodeURIComponent(url);
+  } catch (error) {
+    return url;
+  }
+}
+
+function buildKeywordMatcher(value) {
+  if (!value) {
+    throw new Error("关键词不能为空");
+  }
+
+  const needle = value.toLowerCase();
+  return (url) => {
+    const rawUrl = url.toLowerCase();
+    const decodedUrl = safeDecodeUrl(url).toLowerCase();
+    return rawUrl.includes(needle) || decodedUrl.includes(needle);
+  };
+}
+
+function normalizeRulePath(pathname) {
+  const decoded = safeDecodeUrl(pathname);
+  if (!decoded || decoded === "/") {
+    return "/";
+  }
+
+  return decoded.replace(/\/+$/u, "") || "/";
+}
+
+function pathMatchesPrefix(targetPathname, rulePathname) {
+  const targetPath = normalizeRulePath(targetPathname);
+  const rulePath = normalizeRulePath(rulePathname);
+
+  if (rulePath === "/") {
+    return true;
+  }
+
+  return targetPath === rulePath || targetPath.startsWith(`${rulePath}/`);
+}
+
+function buildPrefixMatcher(value) {
+  if (!value) {
+    throw new Error("前缀不能为空");
+  }
+
+  const hasExplicitProtocol = /^[a-z][a-z0-9+.-]*:\/\//iu.test(value);
+  const parsedRule = new URL(hasExplicitProtocol ? value : `https://${value}`);
+  const rule = {
+    protocol: hasExplicitProtocol ? parsedRule.protocol : "",
+    host: parsedRule.host.toLowerCase(),
+    pathname: parsedRule.pathname
+  };
+
+  return (url) => {
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(url);
+    } catch (error) {
+      return false;
+    }
+
+    if (rule.protocol && parsedUrl.protocol !== rule.protocol) {
+      return false;
+    }
+
+    return (
+      parsedUrl.host.toLowerCase() === rule.host &&
+      pathMatchesPrefix(parsedUrl.pathname, rule.pathname)
+    );
+  };
+}
+
+function buildDomainMatcher(value) {
+  if (!value) {
+    throw new Error("域名不能为空");
+  }
+
+  const hasExplicitProtocol = /^[a-z][a-z0-9+.-]*:\/\//iu.test(value);
+  const parsedRule = new URL(hasExplicitProtocol ? value : `https://${value}`);
+  const hostname = parsedRule.hostname.toLowerCase();
+
+  return (url) => {
+    try {
+      return new URL(url).hostname.toLowerCase() === hostname;
+    } catch (error) {
+      return false;
+    }
+  };
+}
+
+function buildRegexMatcher(value) {
+  if (!value) {
+    throw new Error("正则不能为空");
+  }
+
+  const regex = new RegExp(value);
+  return (url) => {
+    regex.lastIndex = 0;
+    return regex.test(url);
+  };
+}
+
+function buildRuleMatcher(type, value) {
+  if (type === "keyword") {
+    return buildKeywordMatcher(value);
+  }
+
+  if (type === "prefix") {
+    return buildPrefixMatcher(value);
+  }
+
+  if (type === "domain") {
+    return buildDomainMatcher(value);
+  }
+
+  return buildRegexMatcher(value);
+}
+
 export function compilePatternList(input) {
   const compiled = [];
   const invalid = [];
 
-  splitPatternLines(input).forEach((pattern, index) => {
+  splitPatternLines(input).forEach((line, index) => {
+    const rule = parseRuleLine(line);
+
     try {
       compiled.push({
         line: index + 1,
-        source: pattern,
-        regex: new RegExp(pattern)
+        source: line,
+        type: rule.type,
+        value: rule.value,
+        matcher: buildRuleMatcher(rule.type, rule.value)
       });
     } catch (error) {
       invalid.push({
         line: index + 1,
-        source: pattern,
+        source: line,
         message: error instanceof Error ? error.message : String(error)
       });
     }
@@ -99,7 +247,7 @@ export function getModeForUrl(url, settings) {
   const chineseResult = compilePatternList(settings.chinesePatterns || "");
   const englishResult = compilePatternList(settings.englishPatterns || "");
 
-  const chineseMatch = chineseResult.compiled.find((item) => item.regex.test(url));
+  const chineseMatch = chineseResult.compiled.find((item) => item.matcher(url));
   if (chineseMatch) {
     return {
       mode: 1,
@@ -109,7 +257,7 @@ export function getModeForUrl(url, settings) {
     };
   }
 
-  const englishMatch = englishResult.compiled.find((item) => item.regex.test(url));
+  const englishMatch = englishResult.compiled.find((item) => item.matcher(url));
   if (englishMatch) {
     return {
       mode: 0,
