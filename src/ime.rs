@@ -1,4 +1,5 @@
 use anyhow::Result;
+use tracing::info;
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::UI::Input::Ime::{
     ImmGetContext, ImmGetConversionStatus, ImmGetDefaultIMEWnd, ImmGetOpenStatus,
@@ -53,17 +54,28 @@ pub enum ImeMode {
 }
 
 pub fn current_mode(hwnd: HWND, input_method: InputMethod) -> Result<ImeMode> {
-    match input_method {
+    let mode = match input_method {
         InputMethod::Sogou => current_open_status_mode(hwnd),
         InputMethod::Microsoft => current_conversion_mode(hwnd),
-    }
+    }?;
+    info!(?mode, ?input_method, hwnd = ?hwnd.0, "read current input mode");
+    Ok(mode)
 }
 
 pub fn set_mode(hwnd: HWND, desired: ImeMode, input_method: InputMethod) -> Result<bool> {
-    match input_method {
+    info!(?desired, ?input_method, hwnd = ?hwnd.0, "setting input mode");
+    let changed = match input_method {
         InputMethod::Sogou => set_open_status_mode(hwnd, desired),
         InputMethod::Microsoft => set_conversion_mode(hwnd, desired),
-    }
+    }?;
+    info!(
+        ?desired,
+        ?input_method,
+        hwnd = ?hwnd.0,
+        changed,
+        "input mode set command result"
+    );
+    Ok(changed)
 }
 
 fn current_open_status_mode(hwnd: HWND) -> Result<ImeMode> {
@@ -138,7 +150,8 @@ fn current_conversion_mode(hwnd: HWND) -> Result<ImeMode> {
             let mut conversion = IME_CONVERSION_MODE(0);
             let mut sentence = IME_SENTENCE_MODE(0);
             let success =
-                ImmGetConversionStatus(input_context, Some(&mut conversion), Some(&mut sentence)).as_bool();
+                ImmGetConversionStatus(input_context, Some(&mut conversion), Some(&mut sentence))
+                    .as_bool();
             let _ = ImmReleaseContext(hwnd, input_context);
 
             if success {
@@ -197,11 +210,13 @@ fn set_conversion_mode(hwnd: HWND, desired: ImeMode) -> Result<bool> {
         if !input_context.0.is_null() {
             let mut conversion = IME_CONVERSION_MODE(0);
             let mut sentence = IME_SENTENCE_MODE(0);
-            let _ = ImmGetConversionStatus(input_context, Some(&mut conversion), Some(&mut sentence));
+            let _ =
+                ImmGetConversionStatus(input_context, Some(&mut conversion), Some(&mut sentence));
             let conversion = conversion_for_mode(conversion.0, desired);
 
             let _ = ImmSetOpenStatus(input_context, true);
-            let _ = ImmSetConversionStatus(input_context, IME_CONVERSION_MODE(conversion), sentence);
+            let _ =
+                ImmSetConversionStatus(input_context, IME_CONVERSION_MODE(conversion), sentence);
             let _ = ImmReleaseContext(hwnd, input_context);
         }
     }

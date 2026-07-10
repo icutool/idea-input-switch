@@ -98,8 +98,12 @@ pub fn start(sender: Sender<SwitchRequest>, hwnd: HWND, message_id: u32) -> Resu
 
         while !stop_flag_for_thread.load(Ordering::Relaxed) {
             match listener.accept() {
-                Ok((stream, _)) => {
-                    if let Err(error) = handle_connection(stream, &sender, hwnd_raw, message_id) {
+                Ok((stream, addr)) => {
+                    let client_addr = addr.to_string();
+                    info!(client = %client_addr, "accepted HTTP connection");
+                    if let Err(error) =
+                        handle_connection(stream, &sender, hwnd_raw, message_id, client_addr)
+                    {
                         warn!(?error, "failed to handle HTTP request");
                     }
                 }
@@ -125,16 +129,25 @@ fn handle_connection(
     sender: &Sender<SwitchRequest>,
     hwnd_raw: isize,
     message_id: u32,
+    client_addr: String,
 ) -> Result<()> {
     let mut reader = BufReader::new(stream);
     let mut request_line = String::new();
     reader
         .read_line(&mut request_line)
         .context("failed to read request line")?;
+    let request_line = request_line.trim_end().to_string();
+    info!(client = %client_addr, request = %request_line, "received HTTP request");
 
     let response = match parse_requested_mode(&request_line) {
-        Ok(mode) => forward_switch_request(sender, mode, hwnd_raw, message_id),
-        Err(message) => build_http_response(400, &SwitchResponse::error(message)),
+        Ok(mode) => {
+            info!(client = %client_addr, ?mode, "HTTP request matched switch mode");
+            forward_switch_request(sender, mode, hwnd_raw, message_id)
+        }
+        Err(message) => {
+            warn!(client = %client_addr, request = %request_line, message, "invalid HTTP switch request");
+            build_http_response(400, &SwitchResponse::error(message))
+        }
     };
 
     let mut stream = reader.into_inner();
@@ -156,6 +169,7 @@ fn forward_switch_request(
     let request = SwitchRequest::new(desired_mode, response_sender);
 
     if sender.send(request).is_err() {
+        warn!(?desired_mode, "failed to enqueue HTTP switch request");
         return build_http_response(500, &SwitchResponse::error("应用未在处理 HTTP 切换请求"));
     }
 
@@ -164,8 +178,20 @@ fn forward_switch_request(
     }
 
     match response_receiver.recv_timeout(RESPONSE_WAIT_TIMEOUT) {
-        Ok(response) => build_http_response(200, &response),
-        Err(_) => build_http_response(504, &SwitchResponse::error("等待输入法切换结果超时")),
+        Ok(response) => {
+            info!(
+                ?desired_mode,
+                success = response.success,
+                changed = response.changed,
+                message = %response.message,
+                "HTTP switch request completed"
+            );
+            build_http_response(200, &response)
+        }
+        Err(_) => {
+            warn!(?desired_mode, "HTTP switch request timed out");
+            build_http_response(504, &SwitchResponse::error("等待输入法切换结果超时"))
+        }
     }
 }
 

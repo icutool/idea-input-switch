@@ -101,6 +101,19 @@ curl "http://127.0.0.1:5998/switch?mode=0"
 - `mode=0`：切换英文输入
 - 也兼容 `http://127.0.0.1:5998/1` 和 `http://127.0.0.1:5998/0`
 
+## 日志
+
+程序启动后会在 `IdeaInputSwitch.exe` 同级目录创建 `logs` 文件夹，并按日志等级写入：
+
+```text
+logs/
+├── info.log
+├── warn.log
+└── error.log
+```
+
+日志会记录 HTTP 请求接收与解析结果、键盘规则匹配结果、输入法当前状态和切换后的确认状态。
+
 ## 修改 exe 图标
 
 仓库已经预留了 Windows 资源编译入口：`build.rs`。

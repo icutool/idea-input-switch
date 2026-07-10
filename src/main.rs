@@ -9,6 +9,8 @@ mod notify;
 mod tray;
 mod watcher;
 
+use std::fs;
+use std::path::PathBuf;
 use std::sync::{
     mpsc::{channel, Receiver, TryRecvError},
     Mutex, OnceLock,
@@ -16,9 +18,14 @@ use std::sync::{
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Context, Result};
-use tracing::{info, warn};
-use tracing_subscriber::EnvFilter;
+use tracing::{error, info, warn, Level};
+use tracing_appender::non_blocking::WorkerGuard;
+use tracing_subscriber::filter::filter_fn;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::Layer;
 use windows::core::{w, PCWSTR};
+use windows::Win32::Foundation::ERROR_ALREADY_EXISTS;
 use windows::Win32::Foundation::{GetLastError, HANDLE, HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::{CreateMutexW, ReleaseMutex};
@@ -27,7 +34,6 @@ use windows::Win32::UI::WindowsAndMessaging::{
     RegisterClassW, TranslateMessage, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, MSG, WINDOW_EX_STYLE,
     WM_APP, WM_COMMAND, WM_DESTROY, WNDCLASSW, WS_OVERLAPPEDWINDOW,
 };
-use windows::Win32::Foundation::ERROR_ALREADY_EXISTS;
 
 const WINDOW_CLASS: PCWSTR = w!("IdeaInputSwitchHiddenWindow");
 const WINDOW_TITLE: PCWSTR = w!("IdeaInputSwitch");
@@ -37,6 +43,7 @@ const MUTEX_NAME: PCWSTR = w!("Global\\IdeaInputSwitchSingleInstance");
 const ENTER_LISTEN_WINDOW: Duration = Duration::from_secs(30);
 
 static APP_CONTEXT: OnceLock<Mutex<AppContext>> = OnceLock::new();
+static LOG_GUARDS: OnceLock<Vec<WorkerGuard>> = OnceLock::new();
 
 struct AppContext {
     receiver: Receiver<hook::HookEvent>,
@@ -114,8 +121,7 @@ enum SingleInstanceResult {
 
 fn try_acquire_single_instance() -> SingleInstanceResult {
     unsafe {
-        let handle = CreateMutexW(None, true, MUTEX_NAME)
-            .unwrap_or(HANDLE::default());
+        let handle = CreateMutexW(None, true, MUTEX_NAME).unwrap_or(HANDLE::default());
 
         let last_err = GetLastError();
         if last_err == ERROR_ALREADY_EXISTS {
@@ -169,16 +175,67 @@ fn show_already_running_notification(mutex_handle: HANDLE) {
     }
 
     if !mutex_handle.is_invalid() {
-        unsafe { let _ = ReleaseMutex(mutex_handle); }
+        unsafe {
+            let _ = ReleaseMutex(mutex_handle);
+        }
     }
 }
 
 fn init_logging() {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
+    if let Err(error) = try_init_logging() {
+        eprintln!("failed to initialize logging: {error:?}");
+    }
+}
+
+fn try_init_logging() -> Result<()> {
+    let logs_dir = logs_dir()?;
+    fs::create_dir_all(&logs_dir)
+        .with_context(|| format!("failed to create logs directory {}", logs_dir.display()))?;
+
+    let info_file = tracing_appender::rolling::never(&logs_dir, "info.log");
+    let warn_file = tracing_appender::rolling::never(&logs_dir, "warn.log");
+    let error_file = tracing_appender::rolling::never(&logs_dir, "error.log");
+    let (info_writer, info_guard) = tracing_appender::non_blocking(info_file);
+    let (warn_writer, warn_guard) = tracing_appender::non_blocking(warn_file);
+    let (error_writer, error_guard) = tracing_appender::non_blocking(error_file);
+
+    let info_layer = tracing_subscriber::fmt::layer()
+        .with_writer(info_writer)
+        .with_ansi(false)
         .with_target(false)
         .compact()
-        .try_init();
+        .with_filter(filter_fn(|metadata| *metadata.level() == Level::INFO));
+    let warn_layer = tracing_subscriber::fmt::layer()
+        .with_writer(warn_writer)
+        .with_ansi(false)
+        .with_target(false)
+        .compact()
+        .with_filter(filter_fn(|metadata| *metadata.level() == Level::WARN));
+    let error_layer = tracing_subscriber::fmt::layer()
+        .with_writer(error_writer)
+        .with_ansi(false)
+        .with_target(false)
+        .compact()
+        .with_filter(filter_fn(|metadata| *metadata.level() == Level::ERROR));
+
+    tracing_subscriber::registry()
+        .with(info_layer)
+        .with(warn_layer)
+        .with(error_layer)
+        .try_init()
+        .context("failed to initialize tracing subscriber")?;
+
+    let _ = LOG_GUARDS.set(vec![info_guard, warn_guard, error_guard]);
+    info!(logs_dir = %logs_dir.display(), "file logging initialized");
+    Ok(())
+}
+
+fn logs_dir() -> Result<PathBuf> {
+    let exe_path = std::env::current_exe().context("failed to get current executable path")?;
+    let app_dir = exe_path
+        .parent()
+        .ok_or_else(|| anyhow!("failed to resolve executable directory"))?;
+    Ok(app_dir.join("logs"))
 }
 
 fn context_lock() -> std::sync::MutexGuard<'static, AppContext> {
@@ -269,13 +326,13 @@ unsafe extern "system" fn window_proc(
         }
         WM_APP_PROCESS_EVENTS => {
             if let Err(error) = drain_hook_events() {
-                warn!(?error, "failed to process keyboard event");
+                error!(?error, "failed to process keyboard event");
             }
             LRESULT(0)
         }
         WM_APP_PROCESS_HTTP_REQUESTS => {
             if let Err(error) = drain_http_requests() {
-                warn!(?error, "failed to process HTTP switch request");
+                error!(?error, "failed to process HTTP switch request");
             }
             LRESULT(0)
         }
@@ -426,12 +483,26 @@ fn process_hook_event(event: hook::HookEvent) -> Result<()> {
             ime::ImeMode::English
         }
     };
+    info!(
+        ?event,
+        ?desired_mode,
+        ?input_method,
+        hwnd = ?hwnd.0,
+        "keyboard rule matched"
+    );
 
     let current_mode = ime::current_mode(hwnd, input_method)?;
     {
         let mut context = context_lock();
         context.current_mode = current_mode;
     }
+    info!(
+        ?event,
+        ?current_mode,
+        ?desired_mode,
+        ?input_method,
+        "current input mode read before keyboard switch"
+    );
 
     if current_mode == desired_mode {
         if matches!(event, hook::HookEvent::SlashSequence) {
@@ -443,6 +514,11 @@ fn process_hook_event(event: hook::HookEvent) -> Result<()> {
             (context.paused, hwnd_from_raw(context.hwnd_raw))
         };
         tray::update_icon(tray_hwnd, current_mode, paused)?;
+        info!(
+            ?event,
+            ?current_mode,
+            "keyboard switch skipped because current mode already matches"
+        );
         return Ok(());
     }
 
@@ -455,22 +531,47 @@ fn process_hook_event(event: hook::HookEvent) -> Result<()> {
         };
 
         tray::update_icon(tray_hwnd, confirmed, false)?;
+        info!(
+            ?event,
+            ?desired_mode,
+            ?confirmed,
+            changed = confirmed == desired_mode,
+            "keyboard input mode switch completed"
+        );
         if confirmed == desired_mode {
             if matches!(event, hook::HookEvent::SlashSequence) {
                 arm_enter_listener();
             }
             notify::show_mode_switch(tray_hwnd, desired_mode)?;
         }
+    } else {
+        warn!(
+            ?event,
+            ?desired_mode,
+            ?input_method,
+            "keyboard input mode switch command did not take effect"
+        );
     }
 
     Ok(())
 }
 
 fn process_http_switch_request(request: http_server::SwitchRequest) {
+    info!(?request.desired_mode, "processing HTTP input mode switch request");
     let response = match switch_foreground_mode_from_http(request.desired_mode) {
         Ok(response) => response,
-        Err(error) => http_server::SwitchResponse::error(format!("输入法切换失败: {error}")),
+        Err(error) => {
+            error!(?error, ?request.desired_mode, "HTTP input mode switch failed");
+            http_server::SwitchResponse::error(format!("输入法切换失败: {error}"))
+        }
     };
+    info!(
+        success = response.success,
+        changed = response.changed,
+        ?response.mode,
+        message = %response.message,
+        "HTTP input mode switch response ready"
+    );
     request.respond(response);
 }
 
@@ -485,9 +586,14 @@ fn switch_foreground_mode_from_http(
         Some(hwnd) => hwnd,
         None => {
             let _ = notify::show_http_switch_error(tray_hwnd, "未找到可切换的前台窗口");
+            warn!(
+                ?desired_mode,
+                "HTTP switch failed because no foreground window was found"
+            );
             return Ok(http_server::SwitchResponse::error("未找到可切换的前台窗口"));
         }
     };
+    info!(?desired_mode, ?input_method, hwnd = ?hwnd.0, "HTTP switch target foreground window found");
 
     let current_mode = ime::current_mode(hwnd, input_method)?;
     let paused = {
@@ -495,6 +601,13 @@ fn switch_foreground_mode_from_http(
         context.current_mode = current_mode;
         context.paused
     };
+    info!(
+        ?current_mode,
+        ?desired_mode,
+        ?input_method,
+        paused,
+        "current input mode read before HTTP switch"
+    );
 
     if current_mode == desired_mode {
         let _ = tray::update_icon(tray_hwnd, current_mode, paused);
@@ -511,12 +624,19 @@ fn switch_foreground_mode_from_http(
         ));
     }
 
-    let _ = ime::set_mode(hwnd, desired_mode, input_method)?;
+    let changed_by_command = ime::set_mode(hwnd, desired_mode, input_method)?;
     let confirmed_mode = ime::current_mode(hwnd, input_method)?;
     {
         let mut context = context_lock();
         context.current_mode = confirmed_mode;
     }
+    info!(
+        ?desired_mode,
+        ?confirmed_mode,
+        ?input_method,
+        changed_by_command,
+        "HTTP input mode switch command completed"
+    );
 
     let _ = tray::update_icon(tray_hwnd, confirmed_mode, paused);
 
@@ -534,6 +654,12 @@ fn switch_foreground_mode_from_http(
         ))
     } else {
         let _ = notify::show_http_switch_error(tray_hwnd, "输入法切换未生效");
+        warn!(
+            ?desired_mode,
+            ?confirmed_mode,
+            ?input_method,
+            "HTTP input mode switch did not take effect"
+        );
         Ok(http_server::SwitchResponse::error("输入法切换未生效"))
     }
 }
