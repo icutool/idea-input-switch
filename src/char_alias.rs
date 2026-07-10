@@ -11,9 +11,10 @@ use windows::Win32::Graphics::Gdi::{
     BeginPaint, CLIP_DEFAULT_PRECIS, CreateFontW, CreatePen, CreateSolidBrush, DEFAULT_CHARSET,
     DEFAULT_PITCH, DEFAULT_QUALITY, DeleteObject, DrawTextW, EndPaint, FF_DONTCARE, FillRect,
     HBRUSH, HDC, HGDIOBJ, OUT_DEFAULT_PRECIS, PAINTSTRUCT, PS_SOLID, RoundRect, SelectObject,
-    SetBkMode, SetTextColor, TRANSPARENT, DT_LEFT, DT_SINGLELINE, DT_VCENTER,
+    SetBkMode, SetTextColor, TRANSPARENT, DT_CENTER, DT_LEFT, DT_SINGLELINE, DT_VCENTER,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::UI::Controls::{DRAWITEMSTRUCT, ODS_DISABLED, ODS_SELECTED};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, VK_CONTROL, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_MENU, VK_RCONTROL, VK_RMENU,
     VK_RSHIFT, VK_SHIFT,
@@ -21,13 +22,14 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, GetClientRect, GetSystemMetrics,
     GetWindowTextLengthW, GetWindowTextW, IsWindow, MessageBoxW, PostMessageW, RegisterClassW,
-    SendMessageW, SetForegroundWindow, SetWindowPos, SetWindowTextW, ShowWindow, BS_FLAT,
-    BS_PUSHBUTTON, CW_USEDEFAULT, EN_SETFOCUS, ES_AUTOHSCROLL, ES_READONLY, HMENU, LBN_SELCHANGE,
+    SendMessageW, SetForegroundWindow, SetWindowPos, SetWindowTextW, ShowWindow, BS_OWNERDRAW,
+    CW_USEDEFAULT, EN_SETFOCUS, ES_AUTOHSCROLL, ES_READONLY, HMENU, LBN_SELCHANGE,
     LBS_NOTIFY, LB_ADDSTRING, LB_GETCURSEL, LB_RESETCONTENT, LB_SETCURSEL, MB_ICONWARNING, MB_OK,
     SM_CXSCREEN, SM_CYSCREEN, SWP_NOZORDER, SW_SHOW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_APP,
-    WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLORSTATIC, WM_DESTROY, WM_ERASEBKGND, WM_NCDESTROY,
-    WM_PAINT, WM_SETFONT, WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD, WS_MINIMIZEBOX,
-    WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+    WM_CLOSE, WM_COMMAND, WM_CREATE, WM_CTLCOLORBTN, WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX,
+    WM_CTLCOLORSTATIC, WM_DESTROY, WM_DRAWITEM, WM_ERASEBKGND, WM_NCDESTROY, WM_PAINT, WM_SETFONT,
+    WNDCLASSW, WS_CAPTION, WS_CHILD, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP,
+    WS_VISIBLE, WS_VSCROLL,
 };
 use winreg::{enums::HKEY_CURRENT_USER, RegKey};
 
@@ -53,6 +55,10 @@ const RIGHT_CARD: RECT = RECT {
 const COLOR_BG: u32 = 0x00F7F7F7;
 const COLOR_CARD: u32 = 0x00FFFFFF;
 const COLOR_BORDER: u32 = 0x00E5E5E5;
+const COLOR_FIELD: u32 = 0x00FBFBFD;
+const COLOR_PRIMARY: u32 = 0x00FF7A00;
+const COLOR_BUTTON: u32 = 0x00F4F4F6;
+const COLOR_BUTTON_PRESSED: u32 = 0x00E7E7EA;
 const COLOR_TEXT: u32 = 0x00231F20;
 const COLOR_MUTED: u32 = 0x008A8582;
 
@@ -102,6 +108,7 @@ struct AliasWindowState {
     title_font: HGDIOBJ,
     bg_brush: HBRUSH,
     card_brush: HBRUSH,
+    field_brush: HBRUSH,
     selected_index: Option<usize>,
     pending_trigger: Option<KeyBinding>,
     aliases: Vec<CharacterAlias>,
@@ -234,7 +241,25 @@ unsafe extern "system" fn window_proc(
             paint_window(hwnd);
             LRESULT(0)
         }
-        WM_CTLCOLORSTATIC => {
+        WM_DRAWITEM => {
+            let draw_item = unsafe { &*(lparam.0 as *const DRAWITEMSTRUCT) };
+            draw_button(draw_item);
+            LRESULT(1)
+        }
+        WM_CTLCOLOREDIT | WM_CTLCOLORLISTBOX => {
+            unsafe {
+                let hdc = HDC(wparam.0 as _);
+                let _ = SetBkMode(hdc, TRANSPARENT);
+                let _ = SetTextColor(hdc, COLORREF(COLOR_TEXT));
+            }
+            let brush = WINDOW_STATE
+                .lock()
+                .ok()
+                .and_then(|state| state.as_ref().map(|state| state.field_brush))
+                .unwrap_or_default();
+            LRESULT(brush.0 as isize)
+        }
+        WM_CTLCOLORBTN | WM_CTLCOLORSTATIC => {
             unsafe {
                 let hdc = HDC(wparam.0 as _);
                 let _ = SetBkMode(hdc, TRANSPARENT);
@@ -270,6 +295,7 @@ unsafe extern "system" fn window_proc(
                             let _ = DeleteObject(state.title_font);
                             let _ = DeleteObject(state.bg_brush);
                             let _ = DeleteObject(state.card_brush);
+                            let _ = DeleteObject(state.field_brush);
                         }
                     }
                     *state = None;
@@ -366,8 +392,19 @@ fn paint_window(hwnd: HWND) {
             18,
             18,
         );
+
+        let field_brush = CreateSolidBrush(COLORREF(COLOR_FIELD));
+        let field_pen = CreatePen(PS_SOLID, 1, COLORREF(0x00D8D8DC));
+        let _ = SelectObject(hdc, field_pen);
+        let _ = SelectObject(hdc, field_brush);
+        let _ = RoundRect(hdc, 46, 152, 338, 438, 12, 12);
+        let _ = RoundRect(hdc, 410, 180, 686, 220, 12, 12);
+        let _ = RoundRect(hdc, 410, 252, 686, 292, 12, 12);
+
         let _ = SelectObject(hdc, previous_brush);
         let _ = SelectObject(hdc, previous_pen);
+        let _ = DeleteObject(field_brush);
+        let _ = DeleteObject(field_pen);
 
         draw_text(hdc, "字符别名", 34, 28, 220, 30, true, COLOR_TEXT);
         draw_text(
@@ -433,21 +470,115 @@ unsafe fn draw_text(
     }
 }
 
+fn draw_button(item: &DRAWITEMSTRUCT) {
+    let id = item.CtlID as usize;
+    let Some(label) = button_label(id) else {
+        return;
+    };
+
+    unsafe {
+        let pressed = item.itemState.0 & ODS_SELECTED.0 != 0;
+        let disabled = item.itemState.0 & ODS_DISABLED.0 != 0;
+        let is_primary = id == ID_ADD;
+        let is_chip = id >= ID_COMMON_START && id < ID_COMMON_START + COMMON_CHARS.len();
+
+        let fill = if is_primary {
+            if pressed {
+                0x00D86A00
+            } else {
+                COLOR_PRIMARY
+            }
+        } else if pressed {
+            COLOR_BUTTON_PRESSED
+        } else {
+            COLOR_BUTTON
+        };
+        let border = if is_primary { COLOR_PRIMARY } else { 0x00DADADF };
+        let text_color = if disabled {
+            0x00A9A9AF
+        } else if is_primary {
+            0x00FFFFFF
+        } else {
+            COLOR_TEXT
+        };
+
+        let brush = CreateSolidBrush(COLORREF(fill));
+        let pen = CreatePen(PS_SOLID, 1, COLORREF(border));
+        let previous_brush = SelectObject(item.hDC, brush);
+        let previous_pen = SelectObject(item.hDC, pen);
+
+        let mut rect = item.rcItem;
+        if pressed {
+            rect.left += 1;
+            rect.top += 1;
+            rect.right += 1;
+            rect.bottom += 1;
+        }
+        let radius = if is_chip { 10 } else { 14 };
+        let _ = RoundRect(
+            item.hDC,
+            rect.left,
+            rect.top,
+            rect.right,
+            rect.bottom,
+            radius,
+            radius,
+        );
+
+        let font = create_ui_font(if is_chip { 16 } else { 15 }, 500).ok();
+        let previous_font = font.map(|font| SelectObject(item.hDC, font));
+        let _ = SetBkMode(item.hDC, TRANSPARENT);
+        let _ = SetTextColor(item.hDC, COLORREF(text_color));
+
+        let mut text = wide_null(label);
+        let text_len = text.len().saturating_sub(1);
+        let _ = DrawTextW(
+            item.hDC,
+            &mut text[..text_len],
+            &mut rect,
+            DT_CENTER | DT_SINGLELINE | DT_VCENTER,
+        );
+
+        if let Some(previous_font) = previous_font {
+            let selected_font = SelectObject(item.hDC, previous_font);
+            let _ = DeleteObject(selected_font);
+        }
+        let _ = SelectObject(item.hDC, previous_brush);
+        let _ = SelectObject(item.hDC, previous_pen);
+        let _ = DeleteObject(brush);
+        let _ = DeleteObject(pen);
+    }
+}
+
+fn button_label(id: usize) -> Option<&'static str> {
+    match id {
+        ID_ADD => Some("新增规则"),
+        ID_SAVE => Some("保存"),
+        ID_DELETE => Some("删除"),
+        ID_CHARMAP => Some("字符表..."),
+        id if id >= ID_COMMON_START && id < ID_COMMON_START + COMMON_CHARS.len() => {
+            Some(COMMON_CHARS[id - ID_COMMON_START])
+        }
+        _ => None,
+    }
+}
+
 fn create_controls(hwnd: HWND) -> Result<()> {
     let font = create_ui_font(18, 400)?;
     let title_font = create_ui_font(20, 600)?;
     let bg_brush = unsafe { CreateSolidBrush(COLORREF(COLOR_BG)) };
     let card_brush = unsafe { CreateSolidBrush(COLORREF(COLOR_CARD)) };
+    let field_brush = unsafe { CreateSolidBrush(COLORREF(COLOR_FIELD)) };
 
     let list_hwnd = create_control(
         hwnd,
         w!("LISTBOX"),
         "",
-        WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL | style(LBS_NOTIFY),
-        52,
-        158,
-        280,
-        274,
+        WS_CHILD | WS_VISIBLE | WS_VSCROLL | style(LBS_NOTIFY),
+        58,
+        164,
+        268,
+        262,
         ID_LIST,
     )?;
     set_control_font(list_hwnd, font);
@@ -456,11 +587,11 @@ fn create_controls(hwnd: HWND) -> Result<()> {
         hwnd,
         w!("EDIT"),
         "点击后按触发键",
-        WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP | style(ES_AUTOHSCROLL) | style(ES_READONLY),
-        410,
-        184,
-        276,
-        32,
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | style(ES_AUTOHSCROLL) | style(ES_READONLY),
+        418,
+        190,
+        260,
+        22,
         ID_TRIGGER_EDIT,
     )?;
     set_control_font(trigger_edit, font);
@@ -469,11 +600,11 @@ fn create_controls(hwnd: HWND) -> Result<()> {
         hwnd,
         w!("EDIT"),
         "",
-        WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP | style(ES_AUTOHSCROLL),
-        410,
-        256,
-        276,
-        32,
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | style(ES_AUTOHSCROLL),
+        418,
+        262,
+        260,
+        22,
         ID_OUTPUT_EDIT,
     )?;
     set_control_font(output_edit, font);
@@ -495,7 +626,7 @@ fn create_controls(hwnd: HWND) -> Result<()> {
         hwnd,
         w!("BUTTON"),
         "新增规则",
-        WS_CHILD | WS_VISIBLE | WS_TABSTOP | style(BS_PUSHBUTTON) | style(BS_FLAT),
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | style(BS_OWNERDRAW),
         410,
         408,
         94,
@@ -508,7 +639,7 @@ fn create_controls(hwnd: HWND) -> Result<()> {
         hwnd,
         w!("BUTTON"),
         "保存",
-        WS_CHILD | WS_VISIBLE | WS_TABSTOP | style(BS_PUSHBUTTON) | style(BS_FLAT),
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | style(BS_OWNERDRAW),
         518,
         408,
         76,
@@ -521,7 +652,7 @@ fn create_controls(hwnd: HWND) -> Result<()> {
         hwnd,
         w!("BUTTON"),
         "删除",
-        WS_CHILD | WS_VISIBLE | WS_TABSTOP | style(BS_PUSHBUTTON) | style(BS_FLAT),
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | style(BS_OWNERDRAW),
         608,
         408,
         78,
@@ -534,7 +665,7 @@ fn create_controls(hwnd: HWND) -> Result<()> {
         hwnd,
         w!("BUTTON"),
         "字符表...",
-        WS_CHILD | WS_VISIBLE | WS_TABSTOP | style(BS_PUSHBUTTON) | style(BS_FLAT),
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | style(BS_OWNERDRAW),
         592,
         298,
         94,
@@ -550,7 +681,7 @@ fn create_controls(hwnd: HWND) -> Result<()> {
             hwnd,
             w!("BUTTON"),
             ch,
-            WS_CHILD | WS_VISIBLE | WS_TABSTOP | style(BS_PUSHBUTTON) | style(BS_FLAT),
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP | style(BS_OWNERDRAW),
             x,
             y,
             34,
@@ -574,6 +705,7 @@ fn create_controls(hwnd: HWND) -> Result<()> {
         title_font,
         bg_brush,
         card_brush,
+        field_brush,
         selected_index: None,
         pending_trigger: None,
         aliases,
