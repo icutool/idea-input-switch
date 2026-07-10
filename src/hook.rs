@@ -7,7 +7,10 @@ use std::{
 use anyhow::{Context, Result};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::{LibraryLoader::GetModuleHandleW, Threading::GetCurrentThreadId};
-use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_OEM_2, VK_RETURN, VK_SHIFT};
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    GetAsyncKeyState, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
+    KEYEVENTF_UNICODE, VIRTUAL_KEY, VK_OEM_2, VK_RETURN, VK_SHIFT,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, DispatchMessageW, GetMessageW, PostMessageW, PostThreadMessageW,
     SetWindowsHookExW, TranslateMessage, UnhookWindowsHookEx, HC_ACTION, KBDLLHOOKSTRUCT, MSG,
@@ -32,6 +35,8 @@ static SENDER: OnceLock<Sender<HookEvent>> = OnceLock::new();
 static NOTIFY_HWND_RAW: OnceLock<isize> = OnceLock::new();
 static NOTIFY_MESSAGE: OnceLock<u32> = OnceLock::new();
 static HOOK_STATE: OnceLock<Mutex<HookState>> = OnceLock::new();
+static CHARACTER_ALIASES: OnceLock<Mutex<Vec<crate::char_alias::CharacterAlias>>> = OnceLock::new();
+static ALIAS_CAPTURE_TARGET: OnceLock<Mutex<Option<AliasCaptureTarget>>> = OnceLock::new();
 
 #[derive(Clone, Copy, Debug)]
 pub enum HookEvent {
@@ -45,6 +50,12 @@ struct HookState {
     last_slash_at: Option<Instant>,
     doc_comment_stage: u8,
     last_doc_comment_at: Option<Instant>,
+}
+
+#[derive(Clone, Copy)]
+struct AliasCaptureTarget {
+    hwnd_raw: isize,
+    message_id: u32,
 }
 
 pub struct HookThread {
@@ -64,7 +75,12 @@ impl HookThread {
     }
 }
 
-pub fn start(sender: Sender<HookEvent>, hwnd: HWND, message_id: u32) -> Result<HookThread> {
+pub fn start(
+    sender: Sender<HookEvent>,
+    hwnd: HWND,
+    message_id: u32,
+    character_aliases: Vec<crate::char_alias::CharacterAlias>,
+) -> Result<HookThread> {
     let (thread_tx, thread_rx) = std::sync::mpsc::channel();
     let hwnd_raw = hwnd.0 as isize;
 
@@ -73,6 +89,8 @@ pub fn start(sender: Sender<HookEvent>, hwnd: HWND, message_id: u32) -> Result<H
         let _ = NOTIFY_HWND_RAW.set(hwnd_raw);
         let _ = NOTIFY_MESSAGE.set(message_id);
         let _ = HOOK_STATE.set(Mutex::new(HookState::default()));
+        let _ = CHARACTER_ALIASES.set(Mutex::new(character_aliases));
+        let _ = ALIAS_CAPTURE_TARGET.set(Mutex::new(None));
 
         let thread_id = unsafe { GetCurrentThreadId() };
         let _ = thread_tx.send(thread_id);
@@ -118,7 +136,17 @@ pub fn start(sender: Sender<HookEvent>, hwnd: HWND, message_id: u32) -> Result<H
 unsafe extern "system" fn keyboard_proc(ncode: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     if ncode == HC_ACTION as i32 && matches!(wparam.0 as u32, WM_KEYDOWN | WM_SYSKEYDOWN) {
         let keyboard = &*(lparam.0 as *const KBDLLHOOKSTRUCT);
-        match keyboard.vkCode as u16 {
+        let vk_code = keyboard.vkCode as u16;
+
+        if capture_alias_binding(vk_code) {
+            return LRESULT(1);
+        }
+
+        if trigger_character_alias(vk_code) {
+            return LRESULT(1);
+        }
+
+        match vk_code {
             code if code == VK_OEM_2.0 as u16 => handle_slash_event(),
             code if is_star_key(code) => handle_star_event(),
             code if code == VK_RETURN.0 as u16 => handle_enter_event(),
@@ -127,6 +155,118 @@ unsafe extern "system" fn keyboard_proc(ncode: i32, wparam: WPARAM, lparam: LPAR
     }
 
     CallNextHookEx(None, ncode, wparam, lparam)
+}
+
+pub fn reload_character_aliases(aliases: Vec<crate::char_alias::CharacterAlias>) {
+    let aliases_state = CHARACTER_ALIASES.get_or_init(|| Mutex::new(Vec::new()));
+    if let Ok(mut current) = aliases_state.lock() {
+        *current = aliases;
+    }
+}
+
+pub fn begin_alias_capture(hwnd: HWND, message_id: u32) -> Result<()> {
+    let target = ALIAS_CAPTURE_TARGET.get_or_init(|| Mutex::new(None));
+    let mut target = target
+        .lock()
+        .map_err(|_| anyhow::anyhow!("alias capture target lock poisoned"))?;
+    *target = Some(AliasCaptureTarget {
+        hwnd_raw: hwnd.0 as isize,
+        message_id,
+    });
+    Ok(())
+}
+
+pub fn cancel_alias_capture() {
+    let Some(target) = ALIAS_CAPTURE_TARGET.get() else {
+        return;
+    };
+    if let Ok(mut target) = target.lock() {
+        *target = None;
+    }
+}
+
+fn capture_alias_binding(vk_code: u16) -> bool {
+    let Some(binding) = crate::char_alias::binding_from_current_keyboard(vk_code) else {
+        return false;
+    };
+
+    let target = {
+        let Some(target) = ALIAS_CAPTURE_TARGET.get() else {
+            return false;
+        };
+        let Ok(mut target) = target.lock() else {
+            return false;
+        };
+        target.take()
+    };
+
+    let Some(target) = target else {
+        return false;
+    };
+
+    crate::char_alias::post_captured_binding(
+        HWND(target.hwnd_raw as _),
+        target.message_id,
+        binding,
+    );
+    true
+}
+
+fn trigger_character_alias(vk_code: u16) -> bool {
+    if crate::is_listening_paused() || crate::char_alias::is_modifier_vk(vk_code) {
+        return false;
+    }
+
+    let alias = {
+        let aliases = CHARACTER_ALIASES.get_or_init(|| Mutex::new(Vec::new()));
+        let Ok(aliases) = aliases.lock() else {
+            return false;
+        };
+        aliases
+            .iter()
+            .find(|alias| crate::char_alias::binding_matches(alias.trigger, vk_code))
+            .cloned()
+    };
+
+    let Some(alias) = alias else {
+        return false;
+    };
+
+    send_unicode_text(&alias.output);
+    true
+}
+
+fn send_unicode_text(text: &str) {
+    let mut inputs = Vec::new();
+    for unit in text.encode_utf16() {
+        inputs.push(unicode_input(unit, false));
+        inputs.push(unicode_input(unit, true));
+    }
+
+    if !inputs.is_empty() {
+        unsafe {
+            let _ = SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
+        }
+    }
+}
+
+fn unicode_input(unit: u16, key_up: bool) -> INPUT {
+    INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: VIRTUAL_KEY(0),
+                wScan: unit,
+                dwFlags: if key_up {
+                    KEYEVENTF_UNICODE | KEYEVENTF_KEYUP
+                } else {
+                    KEYEVENTF_UNICODE
+                },
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
+    }
 }
 
 fn handle_slash_event() {

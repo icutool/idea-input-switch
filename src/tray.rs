@@ -26,6 +26,7 @@ pub const ID_TOGGLE_AUTOSTART: usize = 1003;
 pub const ID_QUIT: usize = 1004;
 pub const ID_SELECT_SOGOU: usize = 1005;
 pub const ID_SELECT_MICROSOFT: usize = 1006;
+pub const ID_CHARACTER_ALIASES: usize = 1007;
 
 pub fn add_icon(hwnd: HWND, mode: ImeMode, paused: bool) -> Result<()> {
     let mut data = base_icon_data(hwnd);
@@ -139,6 +140,7 @@ pub fn show_context_menu(hwnd: HWND) -> Result<()> {
     let pause_text = wide_null(pause_label);
     let autostart_text = wide_null(autostart_label);
     let input_method_text = wide_null("输入法设置");
+    let character_aliases_text = wide_null("字符别名...");
     let sogou_text = wide_null("搜狗输入法");
     let microsoft_text = wide_null("微软拼音");
     let quit_text = wide_null("退出");
@@ -196,6 +198,13 @@ pub fn show_context_menu(hwnd: HWND) -> Result<()> {
             ID_TOGGLE_AUTOSTART,
             PCWSTR(autostart_text.as_ptr()),
         );
+        let _ = AppendMenuW(
+            menu,
+            MF_STRING,
+            ID_CHARACTER_ALIASES,
+            PCWSTR(character_aliases_text.as_ptr()),
+        );
+        let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
         let _ = AppendMenuW(menu, MF_STRING, ID_QUIT, PCWSTR(quit_text.as_ptr()));
     }
 

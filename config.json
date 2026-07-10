@@ -4,7 +4,7 @@
   "rules": {
     "chinese": [
       {
-        "type": "domain",
+        "type": "exact",
         "value": "https://www.baidu.com/"
       }
     ],

@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod autostart;
+mod char_alias;
 mod config;
 mod hook;
 mod http_server;
@@ -71,9 +72,11 @@ fn main() -> Result<()> {
     let (http_sender, http_receiver) = channel();
     let autostart_enabled = autostart::is_enabled().unwrap_or(false);
     let input_method = config::load_input_method();
+    let character_aliases = char_alias::load_aliases();
     info!(
         autostart_enabled,
         ?input_method,
+        character_alias_count = character_aliases.len(),
         "application config loaded"
     );
 
@@ -103,7 +106,7 @@ fn main() -> Result<()> {
 
     let http_server = http_server::start(http_sender, hwnd, WM_APP_PROCESS_HTTP_REQUESTS)
         .context("failed to start HTTP server")?;
-    let hook_thread = hook::start(sender, hwnd, WM_APP_PROCESS_EVENTS)
+    let hook_thread = hook::start(sender, hwnd, WM_APP_PROCESS_EVENTS, character_aliases)
         .context("failed to start keyboard hook thread")?;
 
     info!("IdeaInputSwitch started");
@@ -293,6 +296,7 @@ fn handle_menu_command(hwnd: HWND, command_id: usize) {
         tray::ID_STATUS => show_current_status(hwnd),
         tray::ID_TOGGLE_PAUSE => toggle_pause(hwnd),
         tray::ID_TOGGLE_AUTOSTART => toggle_autostart(hwnd),
+        tray::ID_CHARACTER_ALIASES => char_alias::show_window(hwnd),
         tray::ID_SELECT_SOGOU => select_input_method(hwnd, ime::InputMethod::Sogou),
         tray::ID_SELECT_MICROSOFT => select_input_method(hwnd, ime::InputMethod::Microsoft),
         tray::ID_QUIT => unsafe { DestroyWindow(hwnd).context("failed to destroy hidden window") },
@@ -302,6 +306,13 @@ fn handle_menu_command(hwnd: HWND, command_id: usize) {
     if let Err(error) = result {
         warn!(?error, "menu command failed");
     }
+}
+
+pub(crate) fn is_listening_paused() -> bool {
+    APP_CONTEXT
+        .get()
+        .and_then(|context| context.lock().ok().map(|context| context.paused))
+        .unwrap_or(false)
 }
 
 fn show_current_status(hwnd: HWND) -> Result<()> {
