@@ -1,5 +1,4 @@
 use anyhow::Result;
-use tracing::info;
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::UI::Input::Ime::{
     ImmGetContext, ImmGetConversionStatus, ImmGetDefaultIMEWnd, ImmGetOpenStatus,
@@ -8,77 +7,15 @@ use windows::Win32::UI::Input::Ime::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{SendMessageW, WM_IME_CONTROL};
 
+use super::ImeMode;
+
 const IMC_GETCONVERSIONMODE: usize = 0x0001;
 const IMC_SETCONVERSIONMODE: usize = 0x0002;
 const IMC_GETOPENSTATUS: usize = 0x0005;
 const IMC_SETOPENSTATUS: usize = 0x0006;
 const IME_CMODE_NATIVE: u32 = 0x0001;
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub enum InputMethod {
-    #[default]
-    Sogou,
-    Microsoft,
-}
-
-impl InputMethod {
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Sogou => "搜狗输入法",
-            Self::Microsoft => "微软拼音",
-        }
-    }
-
-    pub fn config_value(self) -> &'static str {
-        match self {
-            Self::Sogou => "sogou",
-            Self::Microsoft => "microsoft",
-        }
-    }
-
-    pub fn from_config_value(value: &str) -> Option<Self> {
-        match value.trim().to_ascii_lowercase().as_str() {
-            "sogou" => Some(Self::Sogou),
-            "microsoft" | "ms" | "microsoft_pinyin" => Some(Self::Microsoft),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub enum ImeMode {
-    #[default]
-    Unknown,
-    English,
-    Chinese,
-}
-
-pub fn current_mode(hwnd: HWND, input_method: InputMethod) -> Result<ImeMode> {
-    let mode = match input_method {
-        InputMethod::Sogou => current_open_status_mode(hwnd),
-        InputMethod::Microsoft => current_conversion_mode(hwnd),
-    }?;
-    info!(?mode, ?input_method, hwnd = ?hwnd.0, "read current input mode");
-    Ok(mode)
-}
-
-pub fn set_mode(hwnd: HWND, desired: ImeMode, input_method: InputMethod) -> Result<bool> {
-    info!(?desired, ?input_method, hwnd = ?hwnd.0, "setting input mode");
-    let changed = match input_method {
-        InputMethod::Sogou => set_open_status_mode(hwnd, desired),
-        InputMethod::Microsoft => set_conversion_mode(hwnd, desired),
-    }?;
-    info!(
-        ?desired,
-        ?input_method,
-        hwnd = ?hwnd.0,
-        changed,
-        "input mode set command result"
-    );
-    Ok(changed)
-}
-
-fn current_open_status_mode(hwnd: HWND) -> Result<ImeMode> {
+pub(crate) fn current_open_status_mode(hwnd: HWND) -> Result<ImeMode> {
     unsafe {
         if hwnd.0.is_null() {
             return Ok(ImeMode::Unknown);
@@ -115,7 +52,7 @@ fn current_open_status_mode(hwnd: HWND) -> Result<ImeMode> {
     Ok(ImeMode::Unknown)
 }
 
-fn set_open_status_mode(hwnd: HWND, desired: ImeMode) -> Result<bool> {
+pub(crate) fn set_open_status_mode(hwnd: HWND, desired: ImeMode) -> Result<bool> {
     let open = matches!(desired, ImeMode::Chinese);
 
     unsafe {
@@ -139,7 +76,7 @@ fn set_open_status_mode(hwnd: HWND, desired: ImeMode) -> Result<bool> {
     Ok(current_open_status_mode(hwnd)? == desired)
 }
 
-fn current_conversion_mode(hwnd: HWND) -> Result<ImeMode> {
+pub(crate) fn current_conversion_mode(hwnd: HWND) -> Result<ImeMode> {
     unsafe {
         if hwnd.0.is_null() {
             return Ok(ImeMode::Unknown);
@@ -175,7 +112,7 @@ fn current_conversion_mode(hwnd: HWND) -> Result<ImeMode> {
     current_open_status_mode(hwnd)
 }
 
-fn set_conversion_mode(hwnd: HWND, desired: ImeMode) -> Result<bool> {
+pub(crate) fn set_conversion_mode(hwnd: HWND, desired: ImeMode) -> Result<bool> {
     if matches!(desired, ImeMode::Unknown) {
         return Ok(false);
     }

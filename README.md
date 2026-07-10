@@ -18,9 +18,14 @@ IdeaInputSwitch 是一个面向 Windows 11 x64 的 IntelliJ IDEA 输入法自动
 ```text
 src/
 ├── main.rs        # 程序入口，隐藏消息窗口、消息循环、状态路由
+├── logging.rs     # 文件日志初始化，按等级写入 logs 目录
 ├── hook.rs        # 低级键盘 Hook，识别 // 与 Enter
 ├── http_server.rs # HTTP 服务，接收外部输入法切换请求
-├── ime.rs         # IME 查询与切换
+├── ime/           # IME 策略接口与各输入法实现
+│   ├── mod.rs     # 公共类型、策略 trait、策略路由
+│   ├── sogou.rs   # 搜狗输入法策略
+│   ├── microsoft.rs # 微软拼音策略
+│   └── win32.rs   # Windows IME API 封装
 ├── watcher.rs     # 前台窗口与 IDEA 进程判断
 ├── notify.rs      # 自定义通知条 + 备用系统通知接口
 ├── tray.rs        # 系统托盘、菜单、图标、备用气泡通知
@@ -55,8 +60,8 @@ HTTP 请求
   使用 `WH_KEYBOARD_LL` 监听全局按键。`//` 连击窗口为 300ms，Enter 单独触发英文切换。
 - `http_server.rs`
   监听 `5998` 端口，把 HTTP 请求转成主线程中的输入法切换任务。
-- `ime.rs`
-  使用 `WM_IME_CONTROL` 和 `ImmSetOpenStatus` 查询/设置输入法开关状态。
+- `ime/`
+  使用策略模式封装不同输入法的查询与切换逻辑。新增输入法时优先新增独立策略文件，再在 `ime/mod.rs` 注册策略。
 - `watcher.rs`
   通过前台窗口对应进程名判断是否是 `idea64.exe` 或 `idea.exe`。
 - `notify.rs`

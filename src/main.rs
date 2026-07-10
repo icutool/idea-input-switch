@@ -5,12 +5,11 @@ mod config;
 mod hook;
 mod http_server;
 mod ime;
+mod logging;
 mod notify;
 mod tray;
 mod watcher;
 
-use std::fs;
-use std::path::PathBuf;
 use std::sync::{
     mpsc::{channel, Receiver, TryRecvError},
     Mutex, OnceLock,
@@ -18,12 +17,7 @@ use std::sync::{
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Context, Result};
-use tracing::{error, info, warn, Level};
-use tracing_appender::non_blocking::WorkerGuard;
-use tracing_subscriber::filter::filter_fn;
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::Layer;
+use tracing::{error, info, warn};
 use windows::core::{w, PCWSTR};
 use windows::Win32::Foundation::ERROR_ALREADY_EXISTS;
 use windows::Win32::Foundation::{GetLastError, HANDLE, HWND, LPARAM, LRESULT, WPARAM};
@@ -43,7 +37,6 @@ const MUTEX_NAME: PCWSTR = w!("Global\\IdeaInputSwitchSingleInstance");
 const ENTER_LISTEN_WINDOW: Duration = Duration::from_secs(30);
 
 static APP_CONTEXT: OnceLock<Mutex<AppContext>> = OnceLock::new();
-static LOG_GUARDS: OnceLock<Vec<WorkerGuard>> = OnceLock::new();
 
 struct AppContext {
     receiver: Receiver<hook::HookEvent>,
@@ -57,11 +50,8 @@ struct AppContext {
 }
 
 fn main() -> Result<()> {
-    init_logging();
-    info!(
-        pid = std::process::id(),
-        "IdeaInputSwitch process starting"
-    );
+    logging::init();
+    info!(pid = std::process::id(), "IdeaInputSwitch process starting");
 
     // ── 单例检测 ───────────────────────────────────────────
     let _mutex_guard = match try_acquire_single_instance() {
@@ -81,7 +71,11 @@ fn main() -> Result<()> {
     let (http_sender, http_receiver) = channel();
     let autostart_enabled = autostart::is_enabled().unwrap_or(false);
     let input_method = config::load_input_method();
-    info!(autostart_enabled, ?input_method, "application config loaded");
+    info!(
+        autostart_enabled,
+        ?input_method,
+        "application config loaded"
+    );
 
     APP_CONTEXT
         .set(Mutex::new(AppContext {
@@ -190,71 +184,6 @@ fn show_already_running_notification(mutex_handle: HANDLE) {
             let _ = ReleaseMutex(mutex_handle);
         }
     }
-}
-
-fn init_logging() {
-    if let Err(error) = try_init_logging() {
-        eprintln!("failed to initialize logging: {error:?}");
-    }
-}
-
-fn try_init_logging() -> Result<()> {
-    let logs_dir = logs_dir()?;
-    fs::create_dir_all(&logs_dir)
-        .with_context(|| format!("failed to create logs directory {}", logs_dir.display()))?;
-
-    let info_file = tracing_appender::rolling::never(&logs_dir, "info.log");
-    let warn_file = tracing_appender::rolling::never(&logs_dir, "warn.log");
-    let error_file = tracing_appender::rolling::never(&logs_dir, "error.log");
-    let (info_writer, info_guard) = tracing_appender::non_blocking(info_file);
-    let (warn_writer, warn_guard) = tracing_appender::non_blocking(warn_file);
-    let (error_writer, error_guard) = tracing_appender::non_blocking(error_file);
-
-    let info_layer = tracing_subscriber::fmt::layer()
-        .with_writer(info_writer)
-        .with_ansi(false)
-        .with_target(false)
-        .compact()
-        .with_filter(filter_fn(|metadata| *metadata.level() == Level::INFO));
-    let warn_layer = tracing_subscriber::fmt::layer()
-        .with_writer(warn_writer)
-        .with_ansi(false)
-        .with_target(false)
-        .compact()
-        .with_filter(filter_fn(|metadata| *metadata.level() == Level::WARN));
-    let error_layer = tracing_subscriber::fmt::layer()
-        .with_writer(error_writer)
-        .with_ansi(false)
-        .with_target(false)
-        .compact()
-        .with_filter(filter_fn(|metadata| *metadata.level() == Level::ERROR));
-
-    tracing_subscriber::registry()
-        .with(info_layer)
-        .with(warn_layer)
-        .with(error_layer)
-        .try_init()
-        .context("failed to initialize tracing subscriber")?;
-
-    let _ = LOG_GUARDS.set(vec![info_guard, warn_guard, error_guard]);
-    let exe_path = std::env::current_exe()
-        .map(|path| path.display().to_string())
-        .unwrap_or_else(|_| "<unknown>".to_string());
-    info!(
-        pid = std::process::id(),
-        exe_path = %exe_path,
-        logs_dir = %logs_dir.display(),
-        "file logging initialized"
-    );
-    Ok(())
-}
-
-fn logs_dir() -> Result<PathBuf> {
-    let exe_path = std::env::current_exe().context("failed to get current executable path")?;
-    let app_dir = exe_path
-        .parent()
-        .ok_or_else(|| anyhow!("failed to resolve executable directory"))?;
-    Ok(app_dir.join("logs"))
 }
 
 fn context_lock() -> std::sync::MutexGuard<'static, AppContext> {
